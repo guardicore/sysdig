@@ -79,6 +79,17 @@ along with sysdig.  If not, see <http://www.gnu.org/licenses/>.
 #define PPM_AF_NFC          39      /* NFC sockets                  */
 
 /*
+ * sendmsg() flags
+ */
+#define PPM_MSG_CONFIRM     (1 << 0)
+#define PPM_MSG_OOB         (1 << 1)
+#define PPM_MSG_DONTROUTE   (1 << 2)
+#define PPM_MSG_DONTWAIT    (1 << 3)
+#define PPM_MSG_EOR         (1 << 4)
+#define PPM_MSG_NOSIGNAL    (1 << 5)
+#define PPM_MSG_MORE        (1 << 6)
+
+/*
  * File flags
  */
 #define PPM_O_NONE	0
@@ -1173,7 +1184,8 @@ enum ppm_param_type {
 	PT_CHARBUFARRAY = 35,	/* Pointer to an array of strings, exported by the user events decoder. 64bit. For internal use only. */
 	PT_CHARBUF_PAIR_ARRAY = 36,	/* Pointer to an array of string pairs, exported by the user events decoder. 64bit. For internal use only. */
 	PT_IPV4NET = 37, /* An IPv4 network. */
-	PT_MAX = 38 /* array size */
+    PT_MSGLIST = 38, /* list of (struct mmsghdr) objects used by sendmsg()/recvmsg()/sendmmsg()/recvmmsg() */
+	PT_MAX = 39 /* array size */
 };
 
 enum ppm_print_format {
@@ -1267,6 +1279,7 @@ struct ppm_evt_hdr {
 
 
 extern const struct ppm_name_value socket_families[];
+extern const struct ppm_name_value sendmsg_flags[];
 extern const struct ppm_name_value file_flags[];
 extern const struct ppm_name_value flock_flags[];
 extern const struct ppm_name_value clone_flags[];
