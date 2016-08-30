@@ -1,5 +1,90 @@
+#include <netinet/in.h>
+#include "defs.h"
 #include "parser.h"
 #include "trace.h"
+
+
+//
+// Helper function to allocate a socket fd, initialize it by parsing its parameters and add it to the fd table of the given thread.
+//
+inline void guardig_parser::add_socket(guardig_evt *evt, int64_t fd, uint32_t domain, uint32_t type, uint32_t protocol)
+{
+	guardig_fdinfo_t fdi;
+
+	//
+	// Populate the new fdi
+	//
+	memset(&(fdi.m_sockinfo.m_ipv4info), 0, sizeof(fdi.m_sockinfo.m_ipv4info));
+	fdi.m_type = SCAP_FD_UNKNOWN;
+	fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_UNKNOWN;
+
+	if(domain == PPM_AF_UNIX)
+	{
+		fdi.m_type = SCAP_FD_UNIX_SOCK;
+	}
+	else if(domain == PPM_AF_INET || domain == PPM_AF_INET6)
+	{
+		fdi.m_type = (domain == PPM_AF_INET)? SCAP_FD_IPV4_SOCK : SCAP_FD_IPV6_SOCK;
+
+		if(protocol == IPPROTO_TCP)
+		{
+			fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_TCP;
+		}
+		else if(protocol == IPPROTO_UDP)
+		{
+			fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_UDP;
+		}
+		else if(protocol == IPPROTO_IP)
+		{
+			//
+			// XXX: we mask type because, starting from linux 2.6.27, type can be ORed with
+			//      SOCK_NONBLOCK and SOCK_CLOEXEC. We need to validate that byte masking is
+			//      acceptable
+			//
+			if((type & 0xff) == SOCK_STREAM)
+			{
+				fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_TCP;
+			}
+			else if((type & 0xff) == SOCK_DGRAM)
+			{
+				fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_UDP;
+			}
+			else
+			{
+				ASSERT(false);
+			}
+		}
+		else if(protocol == IPPROTO_ICMP)
+		{
+			fdi.m_sockinfo.m_ipv4info.m_fields.m_l4proto = SCAP_L4_ICMP;
+		}
+	}
+	else
+	{
+		if(domain != 16 &&  // AF_NETLINK, used by processes to talk to the kernel
+		        domain != 10 && // IPv6
+		        domain != 17)   // AF_PACKET, used for packet capture
+		{
+			//
+			// IPv6 will go here
+			//
+			ASSERT(false);
+		}
+	}
+
+#ifndef INCLUDE_UNKNOWN_SOCKET_FDS
+	if(fdi.m_type == SCAP_FD_UNKNOWN)
+	{
+		return;
+	}
+#endif
+
+	//
+	// Add the fd to the table.
+	//
+	evt->m_fdinfo = evt->m_tinfo->add_fd(fd, &fdi);
+}
+
 
 uint8_t* guardig_parser::reserve_event_buffer()
 {
@@ -21,17 +106,16 @@ void guardig_parser::store_event(guardig_evt *evt)
 	guardig_threadinfo *tinfo;
 	bool update_tinfo = false;
 
-	tinfo = get_threadinfo(evt);
-	if (tinfo == NULL)
+	if (evt->m_tinfo == NULL)
 	{
-		tinfo = new guardig_threadinfo;
-		update_tinfo = true;
+		TRACE_DEBUG("tinfo is NULL");
+		return;
 	}
 
 	uint32_t elen;
 
 	//
-	// Make sure the event data is going to fit
+	// Make sure the event data is going to fitevt->m_tinfo = new guardig_threadinfo;
 	//
 	elen = scap_event_getlen(evt->m_pevt);
 
@@ -42,15 +126,12 @@ void guardig_parser::store_event(guardig_evt *evt)
 		return;
 	}
 
-	if(tinfo->m_lastevent_data == NULL)
+	if(evt->m_tinfo->m_lastevent_data == NULL)
 	{
-		tinfo->m_lastevent_data = reserve_event_buffer();
+		evt->m_tinfo->m_lastevent_data = reserve_event_buffer();
 	}
-	memcpy(tinfo->m_lastevent_data, evt->m_pevt, elen);
-	tinfo->m_lastevent_cpuid = evt->get_cpuid();
-
-	if (update_tinfo)
-		m_threadinfo_map[evt->m_pevt->tid] = *tinfo;
+	memcpy(evt->m_tinfo->m_lastevent_data, evt->m_pevt, elen);
+	evt->m_tinfo->m_lastevent_cpuid = evt->get_cpuid();
 }
 
 
@@ -59,16 +140,16 @@ bool guardig_parser::retrieve_enter_event(guardig_evt *enter_evt, guardig_evt *e
 	//
 	// Make sure there's a valid thread info
 	//
-	guardig_threadinfo *tinfo;
-
-	tinfo = get_threadinfo(exit_evt);
-	if (tinfo == NULL)
+	if (exit_evt->m_tinfo == NULL)
+	{
+		TRACE_DEBUG("tinfo is NULL");
 		return false;
+	}
 
 	//
 	// Retrieve the copy of the enter event and initialize it
 	//
-	if(!(tinfo->is_lastevent_data_valid() && tinfo->m_lastevent_data))
+	if(!(exit_evt->m_tinfo->is_lastevent_data_valid() && exit_evt->m_tinfo->m_lastevent_data))
 	{
 		//
 		// This happen especially at the beginning of trace files, where events
@@ -77,7 +158,7 @@ bool guardig_parser::retrieve_enter_event(guardig_evt *enter_evt, guardig_evt *e
 		return false;
 	}
 
-	enter_evt->init(tinfo->m_lastevent_data, tinfo->m_lastevent_cpuid);
+	enter_evt->init(exit_evt->m_tinfo->m_lastevent_data, exit_evt->m_tinfo->m_lastevent_cpuid);
 
 	//
 	// Make sure that we're using the right enter event, to prevent inconsistencies when events
@@ -85,7 +166,7 @@ bool guardig_parser::retrieve_enter_event(guardig_evt *enter_evt, guardig_evt *e
 	//
 	if(enter_evt->get_type() != (exit_evt->get_type() - 1))
 	{
-		tinfo->set_lastevent_data_validity(false);
+		exit_evt->m_tinfo->set_lastevent_data_validity(false);
 		return false;
 	}
 
@@ -150,29 +231,15 @@ void guardig_parser::parse_socket_exit(guardig_evt *pgevent)
 	//
 	// Allocate a new fd descriptor, populate it and add it to the thread fd table
 	//
-	//add_socket(evt, fd, domain, type, protocol);
+	add_socket(pgevent, fd, domain, type, protocol);
 	return;
 }
 
 
-guardig_threadinfo *guardig_parser::get_threadinfo(guardig_evt *pgevent)
+void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 {
-	threadinfo_map_iterator_t it;
 
-	it = m_threadinfo_map.find(pgevent->m_pevt->tid);
-	if (it != m_threadinfo_map.end())
-	{
-		return &(it->second);
-	}
-	else
-	{
-		return NULL;
-	}
-}
-
-
-void guardig_parser::process_event(guardig_evt *pgevent)
-{
+	pgevent->m_tinfo = inspector->get_threadinfo(pgevent->m_pevt->tid);
 
 	switch(pgevent->m_pevt->type)
 	{

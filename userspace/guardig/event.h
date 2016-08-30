@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <vector>
 #include "scap.h"
+#include "threadinfo.h"
+#include "fdinfo.h"
 #include "../../driver/ppm_events_public.h"
 using namespace std;
 
@@ -49,6 +51,8 @@ public:
 	scap_evt* m_pevt;
 	uint16_t m_cpuid;
 	uint64_t m_evtnum;
+	guardig_threadinfo *m_tinfo;
+	guardig_fdinfo_t* m_fdinfo;
 
 private:
 	vector<guardig_evt_param> m_params;
@@ -71,6 +75,8 @@ public:
 	{
 		m_flags = EF_NONE;
 		m_evtnum = 0;
+		m_tinfo = NULL;
+		m_fdinfo = NULL;
 	}
 
 	inline void init(uint8_t* evdata, uint16_t cpuid)
@@ -79,6 +85,8 @@ public:
 		m_pevt = (scap_evt *)evdata;
 		m_cpuid = cpuid;
 		m_evtnum = 0;
+		m_tinfo = NULL;
+		m_fdinfo = NULL;
 	}
 
 private:
