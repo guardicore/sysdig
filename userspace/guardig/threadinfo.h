@@ -14,10 +14,21 @@ class guardig_threadinfo
 {
 public:
 
-	uint8_t* m_lastevent_data; // Used by some event parsers to store the last enter event
+	uint8_t *m_lastevent_data; // Used by some event parsers to store the last enter event
 	uint16_t m_lastevent_cpuid;
+	uint16_t m_lastevent_type;
+	int64_t m_lastevent_fd;
+
 	int64_t m_tid;
 	int64_t m_pid;
+	string m_comm; ///< Command name (e.g. "top")
+	string m_exe; ///< argv[0] (e.g. "sshd: user@pts/4")
+	vector<string> m_args; ///< Command line arguments (e.g. "-d1")
+	vector<string> m_env; ///< Environment variables
+	uint32_t m_flags; ///< The thread flags. See the PPM_CL_* declarations in ppm_events_public.h.
+	uint32_t m_uid; ///< user id
+	uint32_t m_gid; ///< group id
+
 	guardig_threadinfo* m_main_thread;
 	guardig *m_inspector;
 	guardig_fdtable m_fdtable; // The fd table of this thread
@@ -25,27 +36,25 @@ public:
 	inline guardig_threadinfo() :
 		m_fdtable(NULL)
 	{
-		m_main_thread = NULL;
-		m_lastevent_data = NULL;
-		m_lastevent_cpuid = -1;
-		m_pid = (uint64_t) - 1LL;
-		m_tid = (uint64_t) - 1LL;
 		m_inspector = NULL;
+		init();
 	}
 
 	inline guardig_threadinfo(guardig *inspector) :
 		m_fdtable(inspector)
 	{
-		m_main_thread = NULL;
-		m_lastevent_data = NULL;
-		m_lastevent_cpuid = -1;
-		m_pid = (uint64_t) - 1LL;
-		m_tid = (uint64_t) - 1LL;
 		m_inspector = inspector;
+		init();
 	}
+
+	void init();
+	void init(scap_threadinfo* pi);
 
 	guardig_fdinfo_t* add_fd(int64_t fd, guardig_fdinfo_t *fdinfo);
 	guardig_threadinfo* lookup_thread();
+
+	void set_cwd(const char* cwd, uint32_t cwdlen);
+	void set_args(const char* args, size_t len);
 
 	inline bool is_lastevent_data_valid()
 	{
@@ -85,6 +94,31 @@ public:
 		}
 
 		return &(root->m_fdtable);
+	}
+
+	/*!
+	  \brief Retrive information about one of this thread/process FDs.
+
+	  \param fd The file descriptor number, e.g. 0 for stdin.
+
+	  \return Pointer to the FD information, or NULL if the given FD doesn't
+	   exist
+	*/
+	inline guardig_fdinfo_t* get_fd(int64_t fd)
+	{
+		if(fd < 0)
+		{
+			return NULL;
+		}
+
+		guardig_fdtable* fdt = get_fd_table();
+
+		if(fdt)
+		{
+			return fdt->find(fd);
+		}
+
+		return NULL;
 	}
 
 	inline guardig_threadinfo* get_main_thread()

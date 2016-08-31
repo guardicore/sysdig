@@ -396,6 +396,7 @@ private:
 	fd_callbacks_info* m_callbaks;
 
 	friend class guardig_fdtable;
+	friend class guardig_parser;
 };
 
 /*@}*/

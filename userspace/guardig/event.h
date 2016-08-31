@@ -48,17 +48,26 @@ private:
 class guardig_evt
 {
 public:
-	scap_evt* m_pevt;
+	scap_evt *m_pevt;
 	uint16_t m_cpuid;
 	uint64_t m_evtnum;
 	guardig_threadinfo *m_tinfo;
-	guardig_fdinfo_t* m_fdinfo;
+	guardig_fdinfo_t *m_fdinfo;
+	const struct ppm_event_info *m_info;
+	const struct ppm_event_info *m_event_info_table;
+	int32_t m_errorcode;
 
 private:
 	vector<guardig_evt_param> m_params;
 	uint32_t m_flags;
 
 public:
+
+	inline guardig_evt()
+	{
+		m_event_info_table = g_infotables.m_event_info;
+	}
+
 	guardig_evt_param *get_param(uint32_t id);
 
 	inline uint16_t get_type()
@@ -71,22 +80,31 @@ public:
 		return m_cpuid;
 	}
 
+	inline ppm_event_flags get_info_flags()
+	{
+		return m_info->flags;
+	}
+
 	inline void init()
 	{
 		m_flags = EF_NONE;
-		m_evtnum = 0;
+		m_info = &(m_event_info_table[m_pevt->type]);
 		m_tinfo = NULL;
 		m_fdinfo = NULL;
+		m_evtnum = 0;
+		m_errorcode = 0;
 	}
 
 	inline void init(uint8_t* evdata, uint16_t cpuid)
 	{
 		m_flags = EF_NONE;
 		m_pevt = (scap_evt *)evdata;
+		m_info = &(m_event_info_table[m_pevt->type]);
 		m_cpuid = cpuid;
-		m_evtnum = 0;
 		m_tinfo = NULL;
 		m_fdinfo = NULL;
+		m_evtnum = 0;
+		m_errorcode = 0;
 	}
 
 private:
