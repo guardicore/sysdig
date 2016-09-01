@@ -397,6 +397,7 @@ private:
 
 	friend class guardig_fdtable;
 	friend class guardig_parser;
+	friend class guardig_threadinfo;
 };
 
 /*@}*/

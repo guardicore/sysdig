@@ -148,7 +148,7 @@ int32_t main()
 	guardig_evt gevent;
 	guardig_parser parser;
 
-	printf("Guardig starting..\n");
+	TRACE_DEBUG("Guardig starting..");
 
 	// FIXME: do I need to define this callback?
 	/*
@@ -173,6 +173,7 @@ int32_t main()
 	init_info_tables();
 	// FIXME: this is hacky, fix it.
 	gevent.m_event_info_table = g_infotables.m_event_info;
+	parser.m_tmp_evt.m_event_info_table = g_infotables.m_event_info;
 
 	while (1)
 	{

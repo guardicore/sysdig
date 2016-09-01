@@ -27,6 +27,7 @@ class guardig_parser
 {
 public:
 	guardig *m_inspector;
+	guardig_evt m_tmp_evt;
 
 	guardig_parser() {
 		m_inspector = NULL;
@@ -54,10 +55,10 @@ private:
 	void parse_bind_exit(guardig_evt *pgevent);
 	void parse_connect_exit(guardig_evt *pgevent);
 	void parse_accept_exit(guardig_evt *pgevent);
+	void parse_clone_exit(guardig_evt *evt);
 	//
 	// Temporary storage to avoid memory allocation
 	//
-	guardig_evt m_tmp_evt;
 	uint8_t m_fake_userevt_storage[4096];
 	//scap_evt* m_fake_userevt;
 

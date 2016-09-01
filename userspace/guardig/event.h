@@ -69,6 +69,12 @@ public:
 	}
 
 	guardig_evt_param *get_param(uint32_t id);
+	const struct ppm_param_info* get_param_info(uint32_t id);
+
+	inline int64_t get_tid()
+	{
+		return m_pevt->tid;
+	}
 
 	inline uint16_t get_type()
 	{
@@ -115,7 +121,7 @@ private:
 		uint32_t nparams;
 		guardig_evt_param par;
 
-		nparams = g_infotables.m_event_info[m_pevt->type].nparams;
+		nparams = m_event_info_table[m_pevt->type].nparams;
 		uint16_t *lens = (uint16_t *)((char *)m_pevt + sizeof(struct ppm_evt_hdr));
 		char *valptr = (char *)lens + nparams * sizeof(uint16_t);
 		m_params.clear();

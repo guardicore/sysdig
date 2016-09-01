@@ -21,6 +21,7 @@ public:
 
 	int64_t m_tid;
 	int64_t m_pid;
+	int64_t m_ptid;
 	string m_comm; ///< Command name (e.g. "top")
 	string m_exe; ///< argv[0] (e.g. "sshd: user@pts/4")
 	vector<string> m_args; ///< Command line arguments (e.g. "-d1")
@@ -50,6 +51,7 @@ public:
 	void init();
 	void init(scap_threadinfo* pi);
 
+	void add_fd_from_scap(scap_fdinfo *fdi, OUT guardig_fdinfo_t *res);
 	guardig_fdinfo_t* add_fd(int64_t fd, guardig_fdinfo_t *fdinfo);
 	guardig_threadinfo* lookup_thread();
 

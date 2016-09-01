@@ -12,6 +12,8 @@ void print_connection(const char *evt_name, guardig_evt *pgevent)
 	guardig_threadinfo *tinfo = pgevent->m_tinfo;
 	guardig_fdinfo_t *fdinfo = pgevent->m_fdinfo;
 	const char *proto;
+	struct in_addr sip, dip;
+	char sip_buf[20], dip_buf[20];
 
 	if (tinfo == NULL || fdinfo == NULL)
 		return;
@@ -30,14 +32,19 @@ void print_connection(const char *evt_name, guardig_evt *pgevent)
 		return;
 	}
 
+	sip.s_addr = fdinfo->m_sockinfo.m_ipv4info.m_fields.m_sip;
+	dip.s_addr = fdinfo->m_sockinfo.m_ipv4info.m_fields.m_dip;
+	strncpy(sip_buf, inet_ntoa(sip), sizeof(sip_buf));
+	strncpy(dip_buf, inet_ntoa(dip), sizeof(dip_buf));
+	sip_buf[sizeof(sip_buf) - 1] = '\0';
+	dip_buf[sizeof(dip_buf) - 1] = '\0';
+
 	printf("C %s %ld %u %u %d %ld %d %s %s \"%s\" \"%s\" \"unknown\" %d \"%s\" %s~%d->%s~%d \"%s\"\n",
 			evt_name, tinfo->m_pid, 0 /* time */, 0 /* time_ns */, pgevent->m_errorcode,
 			tinfo->m_lastevent_fd /* FIXME: there should be a better way */,
 			1 /* threads */, sock_type, proto, "<path>", tinfo->m_exe.c_str(), -1 /* ppid */, "<parent_proc_name>",
-			inet_ntoa(*((struct in_addr *)&fdinfo->m_sockinfo.m_ipv4info.m_fields.m_sip)),
-			fdinfo->m_sockinfo.m_ipv4info.m_fields.m_sport,
-			inet_ntoa(*((struct in_addr *)&fdinfo->m_sockinfo.m_ipv4info.m_fields.m_dip)),
-			fdinfo->m_sockinfo.m_ipv4info.m_fields.m_dport,
+			sip_buf, fdinfo->m_sockinfo.m_ipv4info.m_fields.m_sport,
+			dip_buf, fdinfo->m_sockinfo.m_ipv4info.m_fields.m_dport,
 			"<user>");
 }
 

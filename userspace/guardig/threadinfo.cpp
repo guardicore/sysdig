@@ -7,6 +7,137 @@
 
 #include "guardig.h"
 #include "threadinfo.h"
+#include "defs.h"
+
+
+void guardig_threadinfo::add_fd_from_scap(scap_fdinfo *fdi, OUT guardig_fdinfo_t *res)
+{
+	guardig_fdinfo_t* newfdi = res;
+	newfdi->reset();
+	bool do_add = true;
+
+	newfdi->m_type = fdi->type;
+	newfdi->m_openflags = 0;
+	newfdi->m_type = fdi->type;
+	newfdi->m_flags = guardig_fdinfo_t::FLAGS_FROM_PROC;
+	newfdi->m_ino = fdi->ino;
+
+	switch(newfdi->m_type)
+	{
+	case SCAP_FD_IPV4_SOCK:
+		newfdi->m_sockinfo.m_ipv4info.m_fields.m_sip = fdi->info.ipv4info.sip;
+		newfdi->m_sockinfo.m_ipv4info.m_fields.m_dip = fdi->info.ipv4info.dip;
+		newfdi->m_sockinfo.m_ipv4info.m_fields.m_sport = fdi->info.ipv4info.sport;
+		newfdi->m_sockinfo.m_ipv4info.m_fields.m_dport = fdi->info.ipv4info.dport;
+		newfdi->m_sockinfo.m_ipv4info.m_fields.m_l4proto = fdi->info.ipv4info.l4proto;
+		// FIXME: do I need to fix ports?
+		// If either sip or dip is 0, fix them
+		// m_inspector->m_network_interfaces->update_fd(newfdi);
+		//newfdi->m_name = ipv4tuple_to_string(&newfdi->m_sockinfo.m_ipv4info, m_inspector->m_hostname_and_port_resolution_enabled);
+		break;
+	case SCAP_FD_IPV4_SERVSOCK:
+		newfdi->m_sockinfo.m_ipv4serverinfo.m_ip = fdi->info.ipv4serverinfo.ip;
+		newfdi->m_sockinfo.m_ipv4serverinfo.m_port = fdi->info.ipv4serverinfo.port;
+		newfdi->m_sockinfo.m_ipv4serverinfo.m_l4proto = fdi->info.ipv4serverinfo.l4proto;
+		//newfdi->m_name = ipv4serveraddr_to_string(&newfdi->m_sockinfo.m_ipv4serverinfo, m_inspector->m_hostname_and_port_resolution_enabled);
+
+		//
+		// We keep note of all the host bound server ports.
+		// We'll need them later when patching connections direction.
+		//
+		//m_inspector->m_thread_manager->m_server_ports.insert(newfdi->m_sockinfo.m_ipv4serverinfo.m_port);
+
+		break;
+	case SCAP_FD_IPV6_SOCK:
+		// Not supported atm
+		/*
+		if(guardig_utils::is_ipv4_mapped_ipv6((uint8_t*)&fdi->info.ipv6info.sip) &&
+			guardig_utils::is_ipv4_mapped_ipv6((uint8_t*)&fdi->info.ipv6info.dip))
+		{
+			//
+			// This is an IPv4-mapped IPv6 addresses (http://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses).
+			// Convert it into the IPv4 representation.
+			//
+			newfdi->m_type = SCAP_FD_IPV4_SOCK;
+			newfdi->m_sockinfo.m_ipv4info.m_fields.m_sip = fdi->info.ipv6info.sip[3];
+			newfdi->m_sockinfo.m_ipv4info.m_fields.m_dip = fdi->info.ipv6info.dip[3];
+			newfdi->m_sockinfo.m_ipv4info.m_fields.m_sport = fdi->info.ipv6info.sport;
+			newfdi->m_sockinfo.m_ipv4info.m_fields.m_dport = fdi->info.ipv6info.dport;
+			newfdi->m_sockinfo.m_ipv4info.m_fields.m_l4proto = fdi->info.ipv6info.l4proto;
+			m_inspector->m_network_interfaces->update_fd(newfdi);
+			newfdi->m_name = ipv4tuple_to_string(&newfdi->m_sockinfo.m_ipv4info, m_inspector->m_hostname_and_port_resolution_enabled);
+		}
+		else
+		{
+			copy_ipv6_address(newfdi->m_sockinfo.m_ipv6info.m_fields.m_sip, fdi->info.ipv6info.sip);
+			copy_ipv6_address(newfdi->m_sockinfo.m_ipv6info.m_fields.m_dip, fdi->info.ipv6info.dip);
+			newfdi->m_sockinfo.m_ipv6info.m_fields.m_sport = fdi->info.ipv6info.sport;
+			newfdi->m_sockinfo.m_ipv6info.m_fields.m_dport = fdi->info.ipv6info.dport;
+			newfdi->m_sockinfo.m_ipv6info.m_fields.m_l4proto = fdi->info.ipv6info.l4proto;
+			newfdi->m_name = ipv6tuple_to_string(&newfdi->m_sockinfo.m_ipv6info, m_inspector->m_hostname_and_port_resolution_enabled);
+		}
+		*/
+		do_add = false;
+		break;
+	case SCAP_FD_IPV6_SERVSOCK:
+		// not supported
+		/*
+		copy_ipv6_address(newfdi->m_sockinfo.m_ipv6serverinfo.m_ip, fdi->info.ipv6serverinfo.ip);
+		newfdi->m_sockinfo.m_ipv6serverinfo.m_port = fdi->info.ipv6serverinfo.port;
+		newfdi->m_sockinfo.m_ipv6serverinfo.m_l4proto = fdi->info.ipv6serverinfo.l4proto;
+		newfdi->m_name = ipv6serveraddr_to_string(&newfdi->m_sockinfo.m_ipv6serverinfo, m_inspector->m_hostname_and_port_resolution_enabled);
+
+		//
+		// We keep note of all the host bound server ports.
+		// We'll need them later when patching connections direction.
+		//
+		m_inspector->m_thread_manager->m_server_ports.insert(newfdi->m_sockinfo.m_ipv6serverinfo.m_port);
+		*/
+		do_add = false;
+		break;
+	case SCAP_FD_UNIX_SOCK:
+		do_add = false;
+		break;
+	case SCAP_FD_FIFO:
+	case SCAP_FD_FILE:
+	case SCAP_FD_DIRECTORY:
+	case SCAP_FD_UNSUPPORTED:
+	case SCAP_FD_SIGNALFD:
+	case SCAP_FD_EVENTPOLL:
+	case SCAP_FD_EVENT:
+	case SCAP_FD_INOTIFY:
+	case SCAP_FD_TIMERFD:
+		do_add = false;
+		break;
+	default:
+		ASSERT(false);
+		do_add = false;
+		break;
+	}
+
+	//
+	// Call the protocol decoder callbacks associated to notify them about this FD
+	//
+	/*
+	ASSERT(m_inspector != NULL);
+	vector<guardig_protodecoder*>::iterator it;
+
+	for(it = m_inspector->m_parser->m_open_callbacks.begin();
+		it != m_inspector->m_parser->m_open_callbacks.end(); ++it)
+	{
+		(*it)->on_fd_from_proc(newfdi);
+	}
+	*/
+
+	//
+	// Add the FD to the table
+	//
+	if(do_add)
+	{
+		m_fdtable.add(fdi->fd, newfdi);
+	}
+}
+
 
 guardig_fdinfo_t* guardig_threadinfo::add_fd(int64_t fd, guardig_fdinfo_t *fdinfo)
 {
@@ -77,6 +208,7 @@ void guardig_threadinfo::init()
 	m_lastevent_cpuid = -1;
 	m_pid = (uint64_t) - 1LL;
 	m_tid = (uint64_t) - 1LL;
+	m_ptid = (uint64_t) - 1LL;
 	m_lastevent_type = -1;
 	m_lastevent_fd = (uint64_t) - 1LL;
 	m_flags = PPM_CL_NAME_CHANGED;
@@ -85,7 +217,7 @@ void guardig_threadinfo::init()
 }
 
 
-void guardig_threadinfo::init(scap_threadinfo* pi)
+void guardig_threadinfo::init(scap_threadinfo *pi)
 {
 	scap_fdinfo *fdi;
 	scap_fdinfo *tfdi;
@@ -94,7 +226,7 @@ void guardig_threadinfo::init(scap_threadinfo* pi)
 
 	m_tid = pi->tid;
 	m_pid = pi->pid;
-	//m_ptid = pi->ptid;
+	m_ptid = pi->ptid;
 	//m_sid = pi->sid;
 
 	m_comm = pi->comm;
@@ -152,41 +284,10 @@ void guardig_threadinfo::init(scap_threadinfo* pi)
 	HASH_ITER(hh, pi->fdlist, fdi, tfdi)
 	{
 		add_fd_from_scap(fdi, &tfdinfo);
-
-		if(m_inspector->m_filter != NULL && m_inspector->m_filter_proc_table_when_saving)
-		{
-			tevt.m_tinfo = this;
-			tevt.m_fdinfo = &tfdinfo;
-			tscapevt.tid = m_tid;
-			int64_t tlefd = tevt.m_tinfo->m_lastevent_fd;
-			tevt.m_tinfo->m_lastevent_fd = fdi->fd;
-
-			if(m_inspector->m_filter->run(&tevt))
-			{
-				match = true;
-			}
-			else
-			{
-				//
-				// This tells scap not to include this FD in the write file
-				//
-				fdi->type = SCAP_FD_UNINITIALIZED;
-			}
-
-			tevt.m_tinfo->m_lastevent_fd = tlefd;
-		}
 	}
 
-	m_lastevent_data = NULL;
-
-	if(m_inspector->m_filter != NULL && m_inspector->m_filter_proc_table_when_saving)
-	{
-		if(!match)
-		{
-			pi->filtered_out = 1;
-		}
-	}
-
+	// FIXME: isn't this a memory leak?
+	//m_lastevent_data = NULL;
 }
 
 

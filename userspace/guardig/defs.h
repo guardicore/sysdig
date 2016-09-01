@@ -8,6 +8,12 @@
 #ifndef USERSPACE_GUARDIG_DEFS_H_
 #define USERSPACE_GUARDIG_DEFS_H_
 
+#include <assert.h>
+
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+
 //
 // ASSERT implementation
 //
