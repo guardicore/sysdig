@@ -145,6 +145,8 @@ static int f_sys_ppoll_e(struct event_filler_arguments *args);
 static int f_sys_mount_e(struct event_filler_arguments *args);
 static int f_sys_access_e(struct event_filler_arguments *args);
 static int f_sys_access_x(struct event_filler_arguments *args);
+static int f_sys_close(struct event_filler_arguments *args);
+static int f_sys_close_x(struct event_filler_arguments *args);
 
 /*
  * Note, this is not part of g_event_info because we want to share g_event_info with userland.
@@ -157,8 +159,8 @@ const struct ppm_event_entry g_ppm_events[PPM_EVENT_MAX] = {
 	[PPME_SYSCALL_OPEN_X] = {f_sys_open_x},
 	[PPME_SYSCALL_CREAT_E] = {f_sys_empty},
 	[PPME_SYSCALL_CREAT_X] = {PPM_AUTOFILL, 3, APT_REG, {{AF_ID_RETVAL}, {0}, {AF_ID_USEDEFAULT, 0} } },
-	[PPME_SYSCALL_CLOSE_E] = {f_sys_single},
-	[PPME_SYSCALL_CLOSE_X] = {f_sys_single_x},
+	[PPME_SYSCALL_CLOSE_E] = {f_sys_close},
+	[PPME_SYSCALL_CLOSE_X] = {f_sys_close_x},
 	[PPME_SYSCALL_READ_E] = {PPM_AUTOFILL, 2, APT_REG, {{0}, {2} } },
 	[PPME_SYSCALL_READ_X] = {f_sys_read_x},
 	[PPME_SYSCALL_WRITE_E] = {PPM_AUTOFILL, 2, APT_REG, {{0}, {2} } },
@@ -435,6 +437,48 @@ static int f_sys_generic(struct event_filler_arguments *args)
 
 static int f_sys_empty(struct event_filler_arguments *args)
 {
+	return add_sentinel(args);
+}
+
+static int f_sys_close(struct event_filler_arguments *args)
+{
+	int res;
+	unsigned long val;
+
+	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	res = val_to_ring(args, val, 0, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, (int64_t)current->tgid, 0, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	return add_sentinel(args);
+}
+
+static int f_sys_close_x(struct event_filler_arguments *args)
+{
+	int res;
+	unsigned long val;
+	int64_t retval;
+
+	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
+	res = val_to_ring(args, retval, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, (int64_t)current->tgid, 0, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	// FIXME: can close be a socketcall?
+	// If yes, we need to get the arguments in another way.
+	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	res = val_to_ring(args, val, 0, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
 	return add_sentinel(args);
 }
 
@@ -1014,6 +1058,8 @@ static int f_proc_startupdate(struct event_filler_arguments *args)
 	long total_rss = 0;
 	long swap = 0;
 	int available = STR_STORAGE_SIZE;
+	char pcomm[TASK_COMM_LEN] = "unknown";
+	pid_t ppid = -1;
 
 	/*
 	 * Make sure the operation was successful
@@ -1351,6 +1397,28 @@ cgroups_error:
 		res = val_to_ring(args, (int64_t)(long)args->str_storage, env_len, false, 0);
 		if (unlikely(res != PPM_SUCCESS))
 			return res;
+
+		if (current->parent)
+		{
+			ppid = current->parent->tgid;
+			strlcpy(pcomm, current->parent->comm, sizeof(pcomm));
+		}
+		else
+		{
+			printk("parent is NULL\n");
+		}
+
+		res = val_to_ring(args, (int64_t)ppid, 0, false, 0);
+		if (unlikely(res != PPM_SUCCESS))
+			return res;
+
+		res = val_to_ring(args, (int64_t)pcomm, 0, false, 0);
+		if (unlikely(res != PPM_SUCCESS))
+			return res;
+
+		res = val_to_ring(args, (int64_t)current_uid().val, 0, false, 0);
+		if (unlikely(res != PPM_SUCCESS))
+			return res;
 	}
 
 	return add_sentinel(args);
@@ -1432,6 +1500,8 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 	char *targetbuf = args->str_storage;
 	struct sockaddr_storage address;
 	unsigned long val;
+	pid_t parent_tgid = -1;
+	char parent_comm[TASK_COMM_LEN] = "unknown";
 
 	/*
 	 * Push the result
@@ -1498,6 +1568,51 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 			    false,
 			    0);
 	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+
+	/* PT_FD */
+	res = val_to_ring(args, fd, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_INT8 */
+	// FIXME: sock is not defined
+	//res = val_to_ring(args, (unsigned long)sock->type, 0, false, 0);
+	res = val_to_ring(args, (unsigned long)2, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	if (current->parent != NULL)
+	{
+		parent_tgid = current->parent->tgid;
+		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
+		parent_comm[sizeof(parent_comm) - 1] = '\0';
+	}
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UID */
+	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
+	if (res != PPM_SUCCESS)
 		return res;
 
 	return add_sentinel(args);
@@ -1615,6 +1730,8 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 	unsigned long srvskfd;
 	int err = 0;
 	struct socket *sock;
+	pid_t parent_tgid = -1;
+	char parent_comm[TASK_COMM_LEN] = "unknown";
 
 	/*
 	 * Push the fd
@@ -1661,6 +1778,24 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 		max_ack_backlog = sock->sk->sk_max_ack_backlog;
 	}
 
+	printk("*******************************\n");
+	printk("socket type: %hd\n", sock->type);
+	printk("tid: %d\n", current->pid);
+	printk("pid: %d\n", current->tgid);
+	printk("comm: %s\n", current->comm);
+	struct task_struct *parent = current->parent;
+	if (parent != NULL)
+	{
+		printk("ppid: %d\n", current->parent->tgid);
+		printk("pcomm: %s\n", current->parent->comm);
+	}
+	else
+	{
+		printk("*** parent is null ***");
+	}
+	printk("uid: %d\n", current_uid().val);
+	printk("*******************************\n");
+
 	if (sock)
 		sockfd_put(sock);
 
@@ -1676,6 +1811,43 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 		return res;
 
 	res = val_to_ring(args, max_ack_backlog, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_INT8 */
+	res = val_to_ring(args, (unsigned long)sock->type, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	if (current->parent != NULL)
+	{
+		parent_tgid = current->parent->tgid;
+		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
+		parent_comm[sizeof(parent_comm) - 1] = '\0';
+	}
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UID */
+	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
 	if (res != PPM_SUCCESS)
 		return res;
 
