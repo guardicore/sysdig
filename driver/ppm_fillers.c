@@ -1531,6 +1531,8 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 	unsigned long val;
 	pid_t parent_tgid = -1;
 	char parent_comm[TASK_COMM_LEN] = "unknown";
+	struct socket *sock;
+	short type = 0;
 
 	/*
 	 * Push the result
@@ -1589,6 +1591,18 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 	}
 
 	/*
+	 * Get the socket from the fd
+	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
+	 */
+	sock = sockfd_lookup(fd, &err);
+
+	if (likely(sock))
+	{
+		type = sock->type;
+		sockfd_put(sock);
+	}
+
+	/*
 	 * Copy the endpoint info into the ring
 	 */
 	res = val_to_ring(args,
@@ -1605,10 +1619,8 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 	if (res != PPM_SUCCESS)
 		return res;
 
-	/* PT_INT8 */
-	// FIXME: sock is not defined
-	//res = val_to_ring(args, (unsigned long)sock->type, 0, false, 0);
-	res = val_to_ring(args, (unsigned long)2, 0, false, 0);
+	/* PT_INT16 */
+	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
 	if (res != PPM_SUCCESS)
 		return res;
 
@@ -1761,6 +1773,7 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 	struct socket *sock;
 	pid_t parent_tgid = -1;
 	char parent_comm[TASK_COMM_LEN] = "unknown";
+	short type = 0;
 
 	/*
 	 * Push the fd
@@ -1805,25 +1818,8 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 	if (sock && sock->sk) {
 		ack_backlog = sock->sk->sk_ack_backlog;
 		max_ack_backlog = sock->sk->sk_max_ack_backlog;
+		type = sock->type;
 	}
-
-	printk("*******************************\n");
-	printk("socket type: %hd\n", sock->type);
-	printk("tid: %d\n", current->pid);
-	printk("pid: %d\n", current->tgid);
-	printk("comm: %s\n", current->comm);
-	struct task_struct *parent = current->parent;
-	if (parent != NULL)
-	{
-		printk("ppid: %d\n", current->parent->tgid);
-		printk("pcomm: %s\n", current->parent->comm);
-	}
-	else
-	{
-		printk("*** parent is null ***");
-	}
-	printk("uid: %d\n", current_uid().val);
-	printk("*******************************\n");
 
 	if (sock)
 		sockfd_put(sock);
@@ -1843,8 +1839,8 @@ static int f_sys_accept_x(struct event_filler_arguments *args)
 	if (res != PPM_SUCCESS)
 		return res;
 
-	/* PT_INT8 */
-	res = val_to_ring(args, (unsigned long)sock->type, 0, false, 0);
+	/* PT_INT16 */
+	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
 	if (res != PPM_SUCCESS)
 		return res;
 

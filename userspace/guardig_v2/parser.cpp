@@ -65,7 +65,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		conn.m_dip = *(uint32_t *)(packed_data + 7);
 		conn.m_dport = *(uint16_t *)(packed_data + 11);
 		conn.m_type = SCAP_FD_IPV4_SOCK;
-		conn.m_proto = SCAP_L4_TCP;
+		conn.m_proto = SOCK_STREAM;
 	}
 	else if(*packed_data == PPM_AF_INET6)
 	{
@@ -213,8 +213,8 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	conn.m_fd = *(uint64_t *)parinfo->m_val;
 
 	parinfo = pgevent->get_param(3);
-	ASSERT(parinfo->m_len == sizeof(uint8_t));
-	conn.m_proto = (scap_l4_proto)(*(uint8_t *)parinfo->m_val);
+	ASSERT(parinfo->m_len == sizeof(uint16_t));
+	conn.m_proto = (*(uint16_t *)parinfo->m_val);
 
 	parinfo = pgevent->get_param(4);
 	//ASSERT(parinfo->m_len == sizeof(pid_t));

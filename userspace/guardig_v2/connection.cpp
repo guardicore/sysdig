@@ -21,9 +21,9 @@ void connection::print()
 		type = "unknown";
 
 
-	if (m_proto == SCAP_L4_TCP)
+	if (m_proto == SOCK_STREAM)
 		proto = "tcp";
-	else if (m_proto == SCAP_L4_TCP)
+	else if (m_proto == SOCK_DGRAM)
 		proto = "udp";
 	else
 		proto = "unknown";

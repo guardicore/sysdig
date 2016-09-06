@@ -40,7 +40,7 @@ public:
 		m_errorcode = -1;
 		m_fd = -1;
 		m_type = SCAP_FD_UNINITIALIZED;
-		m_proto = SCAP_L4_UNKNOWN;
+		m_proto = 0;
 		m_exe = "unknown";
 		m_comm = "unknown";
 		m_pcomm = "unknown";
@@ -78,7 +78,7 @@ public:
 	int64_t m_errorcode;
 	int64_t m_fd;
 	scap_fd_type m_type;
-	scap_l4_proto m_proto;
+	uint32_t m_proto;
 	string m_exe;
 	string m_comm;
 	string m_pcomm;
