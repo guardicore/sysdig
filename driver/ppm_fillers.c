@@ -386,6 +386,23 @@ const struct ppm_event_entry g_ppm_events[PPM_EVENT_MAX] = {
 
 #define merge_64(hi, lo) ((((unsigned long long)(hi)) << 32) + ((lo) & 0xffffffffUL))
 
+
+inline int is_socket(unsigned long fd)
+{
+	struct socket *sock;
+	int err = 0;
+
+	sock = sockfd_lookup(fd, &err);
+
+	if (!sock) {
+		return 0;
+	}
+
+	sockfd_put(sock);
+	return 1;
+}
+
+
 static int f_sys_generic(struct event_filler_arguments *args)
 {
 	int res;
@@ -443,10 +460,13 @@ static int f_sys_empty(struct event_filler_arguments *args)
 static int f_sys_close(struct event_filler_arguments *args)
 {
 	int res;
-	unsigned long val;
+	unsigned long fd;
 
-	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	res = val_to_ring(args, val, 0, true, 0);
+	syscall_get_arguments(current, args->regs, 0, 1, &fd);
+	if (!is_socket(fd))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
+	res = val_to_ring(args, fd, 0, true, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -460,8 +480,14 @@ static int f_sys_close(struct event_filler_arguments *args)
 static int f_sys_close_x(struct event_filler_arguments *args)
 {
 	int res;
-	unsigned long val;
+	unsigned long fd;
 	int64_t retval;
+
+	// FIXME: can close be a socketcall?
+	// If yes, we need to get the arguments in another way.
+	syscall_get_arguments(current, args->regs, 0, 1, &fd);
+	if (!is_socket(fd))
+		return PPM_FAILURE_GUARDIC_SILENT;
 
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
 	res = val_to_ring(args, retval, 0, false, 0);
@@ -472,10 +498,7 @@ static int f_sys_close_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	// FIXME: can close be a socketcall?
-	// If yes, we need to get the arguments in another way.
-	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	res = val_to_ring(args, val, 0, true, 0);
+	res = val_to_ring(args, fd, 0, true, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -619,6 +642,9 @@ static int f_sys_read_x(struct event_filler_arguments *args)
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	if (!is_socket(val))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
 	args->fd = (int)val;
 
 	/*
@@ -670,6 +696,9 @@ static int f_sys_write_x(struct event_filler_arguments *args)
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	if (!is_socket(val))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
 	args->fd = (int)val;
 
 	/*

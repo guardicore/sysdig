@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "scap.h"
 #include "guardig.h"
 #include "event.h"
 #include "parser.h"
@@ -79,10 +80,10 @@ uint32_t interesting_events[] =
 		PPME_SYSCALL_CLOSE_X,
 		PPME_SOCKET_SHUTDOWN_E,
 		PPME_SOCKET_SHUTDOWN_X,
-		PPME_SYSCALL_WRITE_E,
+		//PPME_SYSCALL_WRITE_E,
 		PPME_SYSCALL_WRITE_X,
 		// FIXME: what about writev and readv?
-		PPME_SYSCALL_READ_E,
+		//PPME_SYSCALL_READ_E,
 		PPME_SYSCALL_READ_X,
 		PPME_SOCKET_LISTEN_E,
 		PPME_SOCKET_LISTEN_X,
@@ -113,7 +114,7 @@ void guardig::add_process(process &procinfo) //, bool from_scap_proctable)
 }
 
 
-process *guardig::get_process(int64_t pid)
+process *guardig::find_process(int64_t pid)
 {
 	process_map_iterator_t it;
 
@@ -125,10 +126,41 @@ process *guardig::get_process(int64_t pid)
 	else
 	{
 		return NULL;
-
 		// FIXME: they have a cache of the last used threadinfo.
 		// I should add that eventually.
 	}
+}
+
+
+process *guardig::get_process(int64_t pid, bool query_os)
+{
+	process *procinfo = find_process(pid);
+
+	if (procinfo == NULL && query_os)
+	{
+		scap_threadinfo* scap_proc = NULL;
+		process newproc;
+
+		scap_proc = scap_proc_get(m_capture, pid, false);
+
+		if(scap_proc)
+		{
+			newproc.init(scap_proc);
+			scap_proc_free(m_capture, scap_proc);
+		}
+		else
+		{
+			//
+			// Add a fake entry to avoid a continuous lookup
+			//
+			newproc.m_pid = pid;
+		}
+
+		add_process(newproc);
+		procinfo = find_process(pid);
+	}
+
+	return procinfo;
 }
 
 

@@ -36,9 +36,18 @@ void connection::print()
 	sip_buf[sizeof(sip_buf) - 1] = '\0';
 	dip_buf[sizeof(dip_buf) - 1] = '\0';
 
-	printf("C %s %d %lu %lu %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %d \"%s\" %s~%d->%s~%d %d\n",
-				m_evt_name.c_str(), m_pid, m_time, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
-				proto, m_proc_path.c_str(), m_proc_name.c_str(), m_ppid, m_pproc_name.c_str(), sip_buf,
+	printf("C %s %d %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %d \"%s\" %s~%d->%s~%d %d\n",
+				m_evt_name.c_str(), m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
+				proto, m_exe.c_str(), m_comm.c_str(), m_ppid, m_pcomm.c_str(), sip_buf,
 				m_sport, dip_buf, m_dport, m_uid);
+}
+
+
+void connection::print_close(uint64_t ts)
+{
+	set_time(ts);
+	m_evt_name = "close";
+
+	print();
 }
 

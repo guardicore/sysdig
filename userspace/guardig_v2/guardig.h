@@ -23,7 +23,8 @@ public:
 		m_capture = NULL;
 	}
 
-	process *get_process(int64_t pid);
+	process *find_process(int64_t pid);
+	process *get_process(int64_t pid, bool query_os);
 	void delete_process(int64_t pid);
 	void add_process(process &proc);
 

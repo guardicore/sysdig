@@ -20,7 +20,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	conn.m_time = pgevent->m_pevt->ts;
+	conn.set_time(pgevent->m_pevt->ts);
 	conn.m_errorcode = 0;
 
 	//
@@ -89,7 +89,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 
 	parinfo = pgevent->get_param(7);
 	ASSERT(parinfo->m_len != 0);
-	conn.m_proc_name = parinfo->m_val;
+	conn.m_comm = parinfo->m_val;
 
 	parinfo = pgevent->get_param(8);
 	//ASSERT(parinfo->m_len == sizeof(pid_t));
@@ -97,7 +97,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 
 	parinfo = pgevent->get_param(9);
 	ASSERT(parinfo->m_len != 0);
-	conn.m_pproc_name = parinfo->m_val;
+	conn.m_pcomm = parinfo->m_val;
 
 	parinfo = pgevent->get_param(10);
 	ASSERT(parinfo->m_len == sizeof(uint32_t));
@@ -106,18 +106,25 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	//
 	// Add the entry to the table
 	//
-	// FIXME: add the entry to the process table
 
-	process *procinfo = m_inspector->get_process(conn.m_pid);
-	// FIXME: add a dummy proc if we missed the process creation.
+	process *procinfo = m_inspector->get_process(conn.m_pid, true);
 	if (procinfo == NULL)
-		return;
+	{
+		//
+		// The process is already closed, just print the connection
+		// and immediately its shutdown.
+		//
+		conn.print();
+		conn.print_close(conn.m_time);
+	}
+	else
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
 
-	if (!procinfo->m_printed_exec)
-		procinfo->print();
-
-	procinfo->add_connection(conn);
-	conn.print();
+		procinfo->add_connection(conn);
+		conn.print();
+	}
 }
 
 
@@ -128,7 +135,7 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	uint8_t family;
 	connection conn("connect");
 
-	conn.m_time = pgevent->m_pevt->ts;
+	conn.set_time(pgevent->m_pevt->ts);
 
 	parinfo = pgevent->get_param(0);
 	ASSERT(parinfo->m_len == sizeof(uint64_t));
@@ -215,7 +222,7 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 
 	parinfo = pgevent->get_param(5);
 	ASSERT(parinfo->m_len != 0);
-	conn.m_proc_name = parinfo->m_val;
+	conn.m_comm = parinfo->m_val;
 
 	parinfo = pgevent->get_param(6);
 	//ASSERT(parinfo->m_len == sizeof(pid_t));
@@ -223,23 +230,30 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 
 	parinfo = pgevent->get_param(7);
 	ASSERT(parinfo->m_len != 0);
-	conn.m_pproc_name = parinfo->m_val;
+	conn.m_pcomm = parinfo->m_val;
 
 	parinfo = pgevent->get_param(8);
 	ASSERT(parinfo->m_len == sizeof(uint32_t));
 	conn.m_uid = *(uint32_t *)parinfo->m_val;
 
-	process *procinfo = m_inspector->get_process(conn.m_pid);
-	// FIXME: add a dummy proc if we missed the process creation.
-	// or maybe query the os with scap
+	process *procinfo = m_inspector->get_process(conn.m_pid, true);
 	if (procinfo == NULL)
-		return;
+	{
+		//
+		// The process is already closed, just print the connection
+		// and immediately its shutdown.
+		//
+		conn.print();
+		conn.print_close(conn.m_time);
+	}
+	else
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
 
-	if (!procinfo->m_printed_exec)
-		procinfo->print();
-
-	procinfo->add_connection(conn);
-	conn.print();
+		conn.print();
+		procinfo->add_connection(conn);
+	}
 }
 
 
@@ -837,7 +851,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	// Get the exe
 	parinfo = pgevent->get_param(1);
 	ASSERT(parinfo->m_len != 0);
-	proc.m_proc_name = parinfo->m_val;
+	proc.m_exe = parinfo->m_val;
 
 	switch(etype)
 	{
@@ -845,7 +859,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	case PPME_SYSCALL_EXECVE_13_X:
 	case PPME_SYSCALL_EXECVE_14_X:
 		// Old trace files didn't have comm, so just set it to exe
-		proc.m_comm = proc.m_proc_name;
+		proc.m_comm = proc.m_exe;
 		break;
 	case PPME_SYSCALL_EXECVE_15_X:
 	case PPME_SYSCALL_EXECVE_16_X:
@@ -858,23 +872,9 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 		ASSERT(false);
 	}
 
-	// Get the command argumentsset_cwd
-	// FIXME: do we need the command arguments?
+	// Get the command arguments
 	parinfo = pgevent->get_param(2);
-	ASSERT(parinfo->m_len != 0);
-	proc.m_cmdline = proc.m_comm + " ";
-	//evt->m_tinfo->set_args(parinfo->m_val, parinfo->m_len);
-	size_t offset = 0;
-	string tmp;
-	while(offset < parinfo->m_len)
-	{
-		tmp = parinfo->m_val + offset;
-		offset += tmp.length() + 1;
-		proc.m_cmdline += tmp + " ";
-	}
-
-	if (proc.m_cmdline.size() > 0)
-		proc.m_cmdline.pop_back(); // remove the last space
+	proc.set_args(parinfo->m_val, parinfo->m_len);
 
 	// Get the pid
 	parinfo = pgevent->get_param(4);
@@ -887,23 +887,11 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	proc.m_cwd = parinfo->m_val;
 	//evt->m_tinfo->set_cwd(parinfo->m_val, parinfo->m_len);
 
-	switch(etype)
+	if (etype == PPME_SYSCALL_EXECVE_16_X)
 	{
-	case PPME_SYSCALL_EXECVE_16_X:
-		//
-		// Set cgroups and heuristically detect container id
-		//
-		//parinfo = evt->get_param(14);
-		//evt->m_tinfo->set_cgroups(parinfo->m_val, parinfo->m_len);
-		//if(evt->m_tinfo->m_container_id.empty())
-		//{
-		//	m_inspector->m_container_manager.resolve_container(evt->m_tinfo, m_inspector->m_islive);
-		//}
-		break;
-	default:
-		break;
+		parinfo = pgevent->get_param(14);
+		proc.set_cgroups(parinfo->m_val, parinfo->m_len);
 	}
-
 
 	parinfo = pgevent->get_param(16);
 	//ASSERT(parinfo->m_len == sizeof(pid_t));
@@ -911,7 +899,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 
 	parinfo = pgevent->get_param(17);
 	ASSERT(parinfo->m_len != 0);
-	proc.m_pproc_name = parinfo->m_val;
+	proc.m_pcomm = parinfo->m_val;
 
 	parinfo = pgevent->get_param(18);
 	ASSERT(parinfo->m_len == sizeof(uint32_t));
@@ -940,7 +928,7 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 	process *procinfo = NULL;
 	uint64_t tid = pgevent->m_pevt->tid;
 
-	procinfo = m_inspector->get_process(tid);
+	procinfo = m_inspector->get_process(tid, false);
 	if (procinfo == NULL)
 	{
 		// We should get here in 2 cases:
@@ -951,6 +939,7 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 
 	if (procinfo->m_had_connection)
 	{
+		// FIXME: update timestamp
 		procinfo->m_evt_name = "procexit";
 		procinfo->print();
 	}
@@ -976,7 +965,7 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 	//ASSERT(parinfo->m_len == sizeof(pid_t));
 	pid = *(pid_t *)parinfo->m_val;
 
-	process *proc = m_inspector->get_process(pid);
+	process *proc = m_inspector->get_process(pid, false);
 	if (proc == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
@@ -1009,7 +998,7 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 	//ASSERT(parinfo->m_len == sizeof(pid_t));
 	pid = *(pid_t *)parinfo->m_val;
 
-	process *proc = m_inspector->get_process(pid);
+	process *proc = m_inspector->get_process(pid, false);
 	if (proc == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
@@ -1038,6 +1027,7 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 
 	if (retval == 0)
 	{
+		// FIXME: update timestamp
 		conn->m_evt_name = "close";
 		conn->print();
 		proc->delete_connection(conn->m_fd);

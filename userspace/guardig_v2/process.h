@@ -9,6 +9,7 @@
 #define USERSPACE_GUARDIG_V2_PROCESS_H_
 
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include "connection.h"
 
@@ -38,18 +39,36 @@ public:
 		m_pid = -1;
 		m_ppid = -1;
 		m_comm = "unknown";
-		m_proc_path = "unknown";
-		m_proc_name = "unknown";
-		m_pproc_name = "unknown";
+		m_exe = "unknown";
+		m_pcomm = "unknown";
 		m_cwd = "unknown";
-		m_cgroups = "unknown";
+		m_cgroups_str = "unknown";
 		m_cmdline = "unknown";
 		m_uid = -1;
 		m_printed_exec = false;
 		m_had_connection = false;
 	}
 
+	void init(scap_threadinfo *pi)
+	{
+		m_evt_name = "execve";
+		m_pid = pi->pid;
+		m_ppid = pi->ptid; // FIXME: is this ok?
+		m_comm = pi->comm;
+		m_exe = pi->exe;
+		// pcomm?
+		m_cwd = pi->cwd;
+		set_cgroups(pi->cgroups, pi->cgroups_len);
+		set_args(pi->args, pi->args_len);
+		m_uid = pi->uid;
+		m_printed_exec = false;
+		m_had_connection = false;
+	}
+
 	void print();
+	void set_args(const char* args, size_t len);
+	void set_cgroups(const char* cgroups, size_t len);
+
 	void add_connection(connection &conninfo);
 	connection *get_connection(int64_t fd);
 	void delete_connection(int64_t fd);
@@ -58,17 +77,22 @@ public:
 	pid_t m_pid;
 	pid_t m_ppid;
 	string m_comm;
-	string m_proc_path;
-	string m_proc_name;
-	string m_pproc_name;
+	string m_exe;
+	string m_pcomm;
 	string m_cwd;
-	string m_cgroups;
 	string m_cmdline;
+	string m_cgroups_str;
 	uint32_t m_uid;
 	bool m_printed_exec;
 	bool m_had_connection;
+	vector<string> m_args;
+	vector<pair<string, string>> m_cgroups;
 
 	connection_map_t m_conntable;
+
+private:
+	void create_cgroups_str();
+	void create_cmdline();
 };
 
 

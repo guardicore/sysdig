@@ -78,6 +78,7 @@ struct event_filler_arguments {
 #define PPM_FAILURE_BUFFER_FULL -1
 #define PPM_FAILURE_INVALID_USER_MEMORY -2
 #define PPM_FAILURE_BUG -3
+#define PPM_FAILURE_GUARDIC_SILENT -4
 
 typedef int (*filler_callback) (struct event_filler_arguments *args);
 

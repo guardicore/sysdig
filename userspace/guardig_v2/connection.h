@@ -35,14 +35,15 @@ public:
 		m_pid = -1;
 		m_ppid = -1;
 		m_time = 0;
+		m_time_s = 0;
 		m_time_ns = 0;
 		m_errorcode = -1;
 		m_fd = -1;
 		m_type = SCAP_FD_UNINITIALIZED;
 		m_proto = SCAP_L4_UNKNOWN;
-		m_proc_path = "unknown";
-		m_proc_name = "unknown";
-		m_pproc_name = "unknown";
+		m_exe = "unknown";
+		m_comm = "unknown";
+		m_pcomm = "unknown";
 		m_sip = 0;
 		m_sport = 0;
 		m_dip = 0;
@@ -52,6 +53,14 @@ public:
 	}
 
 	void print();
+	void print_close(uint64_t time);
+
+	void set_time(uint64_t ts)
+	{
+		m_time = ts;
+		m_time_s = ts / 1000000000;
+		m_time_ns = ts % 1000000000;
+	}
 
 	enum flags
 	{
@@ -64,14 +73,15 @@ public:
 	pid_t m_pid;
 	pid_t m_ppid;
 	uint64_t m_time;
-	uint64_t m_time_ns;
+	uint32_t m_time_s;
+	uint32_t m_time_ns;
 	int64_t m_errorcode;
 	int64_t m_fd;
 	scap_fd_type m_type;
 	scap_l4_proto m_proto;
-	string m_proc_path;
-	string m_proc_name;
-	string m_pproc_name;
+	string m_exe;
+	string m_comm;
+	string m_pcomm;
 	uint32_t m_sip;
 	uint16_t m_sport;
 	uint32_t m_dip;
