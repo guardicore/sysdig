@@ -257,6 +257,82 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 }
 
 
+void guardig_parser::parse_sendto_exit(guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	int64_t fd, res;
+	pid_t pid;
+
+	parinfo = pgevent->get_param(0);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	res = *(int64_t*)parinfo->m_val;
+
+	parinfo = pgevent->get_param(2);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	fd = *(int64_t*)parinfo->m_val;
+
+	parinfo = pgevent->get_param(3);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	pid = *(pid_t*)parinfo->m_val;
+
+
+	process *proc = m_inspector->get_process(pid, true);
+	if (proc == NULL)
+	{
+		// FIXME: just print the connection
+		return;
+	}
+
+	connection *conn = proc->get_connection(fd);
+	if (conn == NULL)
+	{
+		// FIXME: add the connection?
+		return;
+	}
+
+	if (res > 0)
+		conn->m_sent_bytes += res;
+}
+
+
+void guardig_parser::parse_recvfrom_exit(guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	int64_t fd, res;
+	pid_t pid;
+
+	parinfo = pgevent->get_param(0);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	res = *(int64_t*)parinfo->m_val;
+
+	parinfo = pgevent->get_param(3);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	fd = *(int64_t*)parinfo->m_val;
+
+	parinfo = pgevent->get_param(4);
+	ASSERT(parinfo->m_len == sizeof(uint64_t));
+	pid = *(pid_t*)parinfo->m_val;
+
+
+	process *proc = m_inspector->get_process(pid, true);
+	if (proc == NULL)
+	{
+		// FIXME: just print the connection
+		return;
+	}
+
+	connection *conn = proc->get_connection(fd);
+	if (conn == NULL)
+	{
+		// FIXME: add the connection?
+		return;
+	}
+
+	if (res > 0)
+		conn->m_recv_bytes += res;
+}
+
+
 /*
 void guardig_parser::parse_clone_exit(guardig_evt *evt)
 {
@@ -1027,9 +1103,8 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 
 	if (retval == 0)
 	{
-		// FIXME: update timestamp
-		conn->m_evt_name = "close";
-		conn->print();
+		conn->print_volume();
+		conn->print_close(pgevent->m_pevt->ts);
 		proc->delete_connection(conn->m_fd);
 	}
 	else
@@ -1105,6 +1180,14 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 
 	case PPME_SYSCALL_CLOSE_X:
 		parse_close_exit(pgevent);
+		break;
+
+	case PPME_SOCKET_SENDTO_X:
+		parse_sendto_exit(pgevent);
+		break;
+
+	case PPME_SOCKET_RECVFROM_X:
+		parse_recvfrom_exit(pgevent);
 		break;
 
 	default:

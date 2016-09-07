@@ -483,11 +483,12 @@ static int f_sys_close_x(struct event_filler_arguments *args)
 	unsigned long fd;
 	int64_t retval;
 
-	// FIXME: can close be a socketcall?
-	// If yes, we need to get the arguments in another way.
 	syscall_get_arguments(current, args->regs, 0, 1, &fd);
-	if (!is_socket(fd))
-		return PPM_FAILURE_GUARDIC_SILENT;
+	//
+	// I can't call is_socket at this point because the socket is already closed.
+	//
+	//if (!is_socket(fd))
+	//	return PPM_FAILURE_GUARDIC_SILENT;
 
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
 	res = val_to_ring(args, retval, 0, false, 0);
@@ -2049,6 +2050,14 @@ static int f_sys_send_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
 	return add_sentinel(args);
 }
 
@@ -2178,7 +2187,7 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	u16 size = 0;
 	int64_t retval;
 	char *targetbuf = args->str_storage;
-	int fd;
+	int fd = -1;
 	struct sockaddr __user *usrsockaddr;
 	struct sockaddr_storage address;
 	int addrlen;
@@ -2257,6 +2266,14 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 			    size,
 			    false,
 			    0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 

@@ -50,10 +50,13 @@ public:
 		m_dport = 0;
 		m_uid = -1;
 		m_flags = FLAGS_NONE;
+		m_sent_bytes = 0;
+		m_recv_bytes = 0;
 	}
 
 	void print();
 	void print_close(uint64_t time);
+	void print_volume();
 
 	void set_time(uint64_t ts)
 	{
@@ -88,6 +91,8 @@ public:
 	uint16_t m_dport;
 	uint32_t m_uid;
 	uint32_t m_flags;
+	uint64_t m_sent_bytes;
+	uint64_t m_recv_bytes;
 };
 
 
