@@ -212,7 +212,7 @@ cleanup:
 }
 
 
-void guardig_parser::parse_sendto_exit(guardig_evt *pgevent)
+void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
@@ -246,7 +246,7 @@ cleanup:
 }
 
 
-void guardig_parser::parse_recvfrom_exit(guardig_evt *pgevent)
+void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
@@ -255,8 +255,16 @@ void guardig_parser::parse_recvfrom_exit(guardig_evt *pgevent)
 	connection *conn;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
-	GET_PARAM(pgevent, 3, fd, int64_t);
-	GET_PARAM(pgevent, 4, pid, int64_t);
+	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
+	{
+		GET_PARAM(pgevent, 3, fd, int64_t);
+		GET_PARAM(pgevent, 4, pid, int64_t);
+	}
+	else
+	{
+		GET_PARAM(pgevent, 2, fd, int64_t);
+		GET_PARAM(pgevent, 3, pid, int64_t);
+	}
 
 	proc = m_inspector->get_process(pid, true);
 	if (proc == NULL)
@@ -1101,12 +1109,18 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 		parse_close_exit(pgevent);
 		break;
 
+	case PPME_SYSCALL_PWRITE_X:
+	case PPME_SYSCALL_WRITE_X:
+	case PPME_SOCKET_SEND_X:
 	case PPME_SOCKET_SENDTO_X:
-		parse_sendto_exit(pgevent);
+		parse_send_exit(pgevent);
 		break;
 
+	case PPME_SYSCALL_PREAD_X:
+	case PPME_SYSCALL_READ_X:
+	case PPME_SOCKET_RECV_X:
 	case PPME_SOCKET_RECVFROM_X:
-		parse_recvfrom_exit(pgevent);
+		parse_recv_exit(pgevent);
 		break;
 
 	default:

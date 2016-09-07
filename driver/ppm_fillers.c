@@ -683,6 +683,14 @@ static int f_sys_read_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
 	return add_sentinel(args);
 }
 
@@ -723,6 +731,14 @@ static int f_sys_write_x(struct event_filler_arguments *args)
 	syscall_get_arguments(current, args->regs, 1, 1, &val);
 	args->enforce_snaplen = true;
 	res = val_to_ring(args, val, bufsize, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -2174,6 +2190,16 @@ static int f_sys_recv_x(struct event_filler_arguments *args)
 	int64_t retval;
 
 	res = f_sys_recv_x_common(args, &retval);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
 
 	if (likely(res == PPM_SUCCESS))
 		return add_sentinel(args);

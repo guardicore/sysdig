@@ -56,8 +56,8 @@ private:
 	//void parse_bind_exit(guardig_evt *pgevent);
 	void parse_connect_exit(guardig_evt *pgevent);
 	void parse_accept_exit(guardig_evt *pgevent);
-	void parse_sendto_exit(guardig_evt *pgevent);
-	void parse_recvfrom_exit(guardig_evt *pgevent);
+	void parse_send_exit(guardig_evt *pgevent);
+	void parse_recv_exit(guardig_evt *pgevent);
 	//void parse_clone_exit(guardig_evt *evt);
 	void parse_execve_exit(guardig_evt *pgevent);
 	void parse_thread_exit(guardig_evt *pgevent);
