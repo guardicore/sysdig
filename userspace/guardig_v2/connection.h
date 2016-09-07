@@ -73,8 +73,8 @@ public:
 	};
 
 	string m_evt_name;
-	pid_t m_pid;
-	pid_t m_ppid;
+	int64_t m_pid;
+	int64_t m_ppid;
 	uint64_t m_time;
 	uint32_t m_time_s;
 	uint32_t m_time_ns;

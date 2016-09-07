@@ -36,7 +36,7 @@ void connection::print()
 	sip_buf[sizeof(sip_buf) - 1] = '\0';
 	dip_buf[sizeof(dip_buf) - 1] = '\0';
 
-	printf("C %s %d %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %d \"%s\" %s~%d->%s~%d %d\n",
+	printf("C %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d\n",
 				m_evt_name.c_str(), m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
 				proto, m_exe.c_str(), m_comm.c_str(), m_ppid, m_pcomm.c_str(), sip_buf,
 				m_sport, dip_buf, m_dport, m_uid);
@@ -79,7 +79,7 @@ void connection::print_volume()
 	sip_buf[sizeof(sip_buf) - 1] = '\0';
 	dip_buf[sizeof(dip_buf) - 1] = '\0';
 
-	printf("V %s %d %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %d \"%s\" %s~%d->%s~%d %d %lu %lu\n",
+	printf("V %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d %lu %lu\n",
 				"report", m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
 				proto, m_exe.c_str(), m_comm.c_str(), m_ppid, m_pcomm.c_str(), sip_buf,
 				m_sport, dip_buf, m_dport, m_uid, m_sent_bytes, m_recv_bytes);

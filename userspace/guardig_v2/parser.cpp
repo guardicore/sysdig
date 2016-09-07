@@ -7,11 +7,38 @@
 #include "process.h"
 
 
+#define GET_PARAM(evt, num, var, type) 			\
+	do {										\
+		parinfo = evt->get_param(num);			\
+		if (parinfo == NULL || 					\
+			parinfo->m_len != sizeof(type)) 	\
+		{ 										\
+			ASSERT(false); 						\
+			goto cleanup; 						\
+		} 										\
+		var = *(type *)parinfo->m_val;			\
+	} while(0)
+
+
+#define GET_PARAM_BUFFER(evt, num, var, type)	\
+	do {										\
+		parinfo = evt->get_param(num);			\
+		if (parinfo == NULL || 					\
+			parinfo->m_len == 0)			 	\
+		{ 										\
+			ASSERT(false); 						\
+			goto cleanup; 						\
+		} 										\
+		var = (type)parinfo->m_val;				\
+	} while(0)
+
+
 void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	uint8_t* packed_data;
 	connection conn("accept");
+	process *procinfo;
 
 	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
 		  pgevent->m_pevt->type == PPME_SOCKET_ACCEPT_5_X))
@@ -23,37 +50,18 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	conn.set_time(pgevent->m_pevt->ts);
 	conn.m_errorcode = 0;
 
-	//
 	// Extract the fd
-	//
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(int64_t));
-	conn.m_fd = *(int64_t *)parinfo->m_val;
-
+	GET_PARAM(pgevent, 0, conn.m_fd, int64_t);
 	if(conn.m_fd < 0)
 	{
-		//
-		// Accept failure.
-		// Do nothing.
-		//
+		// Accept failure. Do nothing.
 		return;
 	}
 
-	//
 	// Extract the address
-	//
-	parinfo = pgevent->get_param(1);
-	if(parinfo->m_len == 0)
-	{
-		//
-		// No address, there's nothing we can really do with this.
-		// This happens for socket types that we don't support, so we have the assertion
-		// to make sure that this is not a type of socket that we support.
-		//
-		return;
-	}
-
-	packed_data = (uint8_t*)parinfo->m_val;
+	// This might not work for socket types that we don't support, so we have the assertion
+	// to make sure that this is not a type of socket that we support.
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
 
 	//
 	// Populate the fd info class
@@ -83,31 +91,16 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	parinfo = pgevent->get_param(6);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	conn.m_pid = *(pid_t *)parinfo->m_val;
-
-	parinfo = pgevent->get_param(7);
-	ASSERT(parinfo->m_len != 0);
-	conn.m_comm = parinfo->m_val;
-
-	parinfo = pgevent->get_param(8);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	conn.m_ppid = *(pid_t *)parinfo->m_val;
-
-	parinfo = pgevent->get_param(9);
-	ASSERT(parinfo->m_len != 0);
-	conn.m_pcomm = parinfo->m_val;
-
-	parinfo = pgevent->get_param(10);
-	ASSERT(parinfo->m_len == sizeof(uint32_t));
-	conn.m_uid = *(uint32_t *)parinfo->m_val;
+	GET_PARAM(pgevent, 6, conn.m_pid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 7, conn.m_comm, char*);
+	GET_PARAM(pgevent, 8, conn.m_ppid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 9, conn.m_pcomm, char*);
+	GET_PARAM(pgevent, 10, conn.m_uid, uint32_t);
 
 	//
 	// Add the entry to the table
 	//
-
-	process *procinfo = m_inspector->get_process(conn.m_pid, true);
+	procinfo = m_inspector->get_process(conn.m_pid, true);
 	if (procinfo == NULL)
 	{
 		//
@@ -125,6 +118,9 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		procinfo->add_connection(conn);
 		conn.print();
 	}
+
+cleanup:
+	return;
 }
 
 
@@ -134,109 +130,65 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	uint8_t *packed_data;
 	uint8_t family;
 	connection conn("connect");
+	process *procinfo;
 
 	conn.set_time(pgevent->m_pevt->ts);
 
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	conn.m_errorcode = *(int64_t*)parinfo->m_val;
+	GET_PARAM(pgevent, 0, conn.m_errorcode, uint64_t);
 
 	if (conn.m_errorcode < 0)
 	{
-		//
 		// connections that return with a SE_EINPROGRESS are totally legit.
-		//
 		if(conn.m_errorcode != -EINPROGRESS)
 		{
 			return;
 		}
 	}
 
-	parinfo = pgevent->get_param(1);
-	if(parinfo->m_len == 0)
-	{
-		//
-		// No address, there's nothing we can really do with this.
-		// This happens for socket types that we don't support, so we have the assertion
-		// to make sure that this is not a type of socket that we support.
-		//
-		return;
-	}
+	// This can fail for socket types that we don't support, so we have the assertion
+	// to make sure that this is not a type of socket that we support.
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
 
-	packed_data = (uint8_t*)parinfo->m_val;
-
-	//
 	// Validate the family
-	//
 	family = *packed_data;
 
-	//
 	// Fill the fd with the socket info
-	//
-	if(family == PPM_AF_INET || family == PPM_AF_INET6)
+	if(family == PPM_AF_INET)
 	{
-		if(family == PPM_AF_INET6)
-		{
-			TRACE_DEBUG("IPv6 is not supported yet");
-			return;
-		}
-
-		//
 		// Update the FD info with this tuple
-		//
-		if(family == PPM_AF_INET)
-		{
-			conn.m_sip = *(uint32_t *)(packed_data + 1);
-			conn.m_sport = *(uint16_t *)(packed_data + 5);
-			conn.m_dip = *(uint32_t *)(packed_data + 7);
-			conn.m_dport = *(uint16_t *)(packed_data + 11);
-			conn.m_type = SCAP_FD_IPV4_SOCK;
-		}
+		conn.m_sip = *(uint32_t *)(packed_data + 1);
+		conn.m_sport = *(uint16_t *)(packed_data + 5);
+		conn.m_dip = *(uint32_t *)(packed_data + 7);
+		conn.m_dport = *(uint16_t *)(packed_data + 11);
+		conn.m_type = SCAP_FD_IPV4_SOCK;
+	}
+	else if (family == PPM_AF_INET6)
+	{
+		TRACE_DEBUG("ipv6 is not supported yet");
+		return;
+	}
+	else if (family == PPM_AF_UNIX)
+	{
+		return;
 	}
 	else
 	{
-		if(family != PPM_AF_UNIX)
-		{
-			//
-			// This should happen only in case of a bug in our code, because I'm assuming that the OS
-			// causes a connect with the wrong socket type to fail.
-			// Assert in debug mode and just keep going in release mode.
-			//
-			ASSERT(false);
-		}
-
+		// This should happen only in case of a bug in our code, because I'm assuming that the OS
+		// causes a connect with the wrong socket type to fail.
+		// Assert in debug mode and just keep going in release mode.
+		ASSERT(false);
 		return;
 	}
 
-	parinfo = pgevent->get_param(2);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	conn.m_fd = *(uint64_t *)parinfo->m_val;
+	GET_PARAM(pgevent, 2, conn.m_fd, int64_t);
+	GET_PARAM(pgevent, 3, conn.m_proto, uint16_t);
+	GET_PARAM(pgevent, 4, conn.m_pid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 5, conn.m_comm, char*);
+	GET_PARAM(pgevent, 6, conn.m_ppid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 7, conn.m_pcomm, char*);
+	GET_PARAM(pgevent, 8, conn.m_uid, uint32_t);
 
-	parinfo = pgevent->get_param(3);
-	ASSERT(parinfo->m_len == sizeof(uint16_t));
-	conn.m_proto = (*(uint16_t *)parinfo->m_val);
-
-	parinfo = pgevent->get_param(4);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	conn.m_pid = *(pid_t *)parinfo->m_val;
-
-	parinfo = pgevent->get_param(5);
-	ASSERT(parinfo->m_len != 0);
-	conn.m_comm = parinfo->m_val;
-
-	parinfo = pgevent->get_param(6);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	conn.m_ppid = *(pid_t *)parinfo->m_val;
-
-	parinfo = pgevent->get_param(7);
-	ASSERT(parinfo->m_len != 0);
-	conn.m_pcomm = parinfo->m_val;
-
-	parinfo = pgevent->get_param(8);
-	ASSERT(parinfo->m_len == sizeof(uint32_t));
-	conn.m_uid = *(uint32_t *)parinfo->m_val;
-
-	process *procinfo = m_inspector->get_process(conn.m_pid, true);
+	procinfo = m_inspector->get_process(conn.m_pid, true);
 	if (procinfo == NULL)
 	{
 		//
@@ -254,6 +206,9 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 		conn.print();
 		procinfo->add_connection(conn);
 	}
+
+cleanup:
+	return;
 }
 
 
@@ -262,28 +217,21 @@ void guardig_parser::parse_sendto_exit(guardig_evt *pgevent)
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
 	pid_t pid;
+	process *proc;
+	connection *conn;
 
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	res = *(int64_t*)parinfo->m_val;
+	GET_PARAM(pgevent, 0, res, int64_t);
+	GET_PARAM(pgevent, 2, fd, int64_t);
+	GET_PARAM(pgevent, 3, pid, int64_t);
 
-	parinfo = pgevent->get_param(2);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	fd = *(int64_t*)parinfo->m_val;
-
-	parinfo = pgevent->get_param(3);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	pid = *(pid_t*)parinfo->m_val;
-
-
-	process *proc = m_inspector->get_process(pid, true);
+	proc = m_inspector->get_process(pid, true);
 	if (proc == NULL)
 	{
 		// FIXME: just print the connection
 		return;
 	}
 
-	connection *conn = proc->get_connection(fd);
+	conn = proc->get_connection(fd);
 	if (conn == NULL)
 	{
 		// FIXME: add the connection?
@@ -292,6 +240,9 @@ void guardig_parser::parse_sendto_exit(guardig_evt *pgevent)
 
 	if (res > 0)
 		conn->m_sent_bytes += res;
+
+cleanup:
+	return;
 }
 
 
@@ -300,28 +251,21 @@ void guardig_parser::parse_recvfrom_exit(guardig_evt *pgevent)
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
 	pid_t pid;
+	process *proc;
+	connection *conn;
 
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	res = *(int64_t*)parinfo->m_val;
+	GET_PARAM(pgevent, 0, res, int64_t);
+	GET_PARAM(pgevent, 3, fd, int64_t);
+	GET_PARAM(pgevent, 4, pid, int64_t);
 
-	parinfo = pgevent->get_param(3);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	fd = *(int64_t*)parinfo->m_val;
-
-	parinfo = pgevent->get_param(4);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	pid = *(pid_t*)parinfo->m_val;
-
-
-	process *proc = m_inspector->get_process(pid, true);
+	proc = m_inspector->get_process(pid, true);
 	if (proc == NULL)
 	{
 		// FIXME: just print the connection
 		return;
 	}
 
-	connection *conn = proc->get_connection(fd);
+	conn = proc->get_connection(fd);
 	if (conn == NULL)
 	{
 		// FIXME: add the connection?
@@ -330,6 +274,9 @@ void guardig_parser::parse_recvfrom_exit(guardig_evt *pgevent)
 
 	if (res > 0)
 		conn->m_recv_bytes += res;
+
+cleanup:
+	return;
 }
 
 
@@ -915,9 +862,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	process proc("execve");
 
 	// Validate the return value
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(int64_t));
-	retval = *(int64_t *)parinfo->m_val;
+	GET_PARAM(pgevent, 0, retval, int64_t);
 
 	if(retval < 0)
 	{
@@ -925,9 +870,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	}
 
 	// Get the exe
-	parinfo = pgevent->get_param(1);
-	ASSERT(parinfo->m_len != 0);
-	proc.m_exe = parinfo->m_val;
+	GET_PARAM_BUFFER(pgevent, 1, proc.m_exe, char*);
 
 	switch(etype)
 	{
@@ -940,9 +883,7 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 	case PPME_SYSCALL_EXECVE_15_X:
 	case PPME_SYSCALL_EXECVE_16_X:
 		// Get the comm
-		parinfo = pgevent->get_param(13);
-		ASSERT(parinfo->m_len != 0);
-		proc.m_comm = parinfo->m_val;
+		GET_PARAM_BUFFER(pgevent, 13, proc.m_comm, char*);
 		break;
 	default:
 		ASSERT(false);
@@ -950,51 +891,43 @@ void guardig_parser::parse_execve_exit(guardig_evt *pgevent)
 
 	// Get the command arguments
 	parinfo = pgevent->get_param(2);
+	if (parinfo == NULL)
+		goto cleanup;
+
 	proc.set_args(parinfo->m_val, parinfo->m_len);
 
-	// Get the pid
-	parinfo = pgevent->get_param(4);
-	ASSERT(parinfo->m_len == sizeof(uint64_t));
-	proc.m_pid = *(uint64_t *)parinfo->m_val;
-
-	// Get the working directory
-	parinfo = pgevent->get_param(6);
-	ASSERT(parinfo->m_len != 0);
-	proc.m_cwd = parinfo->m_val;
+	GET_PARAM(pgevent, 4, proc.m_pid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 6, proc.m_cwd, char*);
 	//evt->m_tinfo->set_cwd(parinfo->m_val, parinfo->m_len);
+	GET_PARAM(pgevent, 16, proc.m_ppid, int64_t);
+	GET_PARAM_BUFFER(pgevent, 17, proc.m_pcomm, char*);
+	GET_PARAM(pgevent, 18, proc.m_uid, uint32_t);
 
 	if (etype == PPME_SYSCALL_EXECVE_16_X)
 	{
 		parinfo = pgevent->get_param(14);
+		if (parinfo == NULL)
+			goto cleanup;
+
 		proc.set_cgroups(parinfo->m_val, parinfo->m_len);
 	}
-
-	parinfo = pgevent->get_param(16);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	proc.m_ppid = *(pid_t *)parinfo->m_val;
-
-	parinfo = pgevent->get_param(17);
-	ASSERT(parinfo->m_len != 0);
-	proc.m_pcomm = parinfo->m_val;
-
-	parinfo = pgevent->get_param(18);
-	ASSERT(parinfo->m_len == sizeof(uint32_t));
-	proc.m_uid = *(uint32_t *)parinfo->m_val;
 
 	//
 	// execve starts with a clean fd list, so we get rid of the fd list that clone
 	// copied from the parent
 	// XXX validate this
 	//
-	//  scap_fd_free_table(handle, tinfo);
+	// scap_fd_free_table(handle, tinfo);
 
 	//
 	// Recompute the program hash
 	//
 	// FIXME: why do we need to hash the program?
-	//evt->m_tinfo->compute_program_hash();
+	// evt->m_tinfo->compute_program_hash();
 
 	m_inspector->add_process(proc);
+
+cleanup:
 	return;
 }
 
@@ -1015,9 +948,7 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 
 	if (procinfo->m_had_connection)
 	{
-		// FIXME: update timestamp
-		procinfo->m_evt_name = "procexit";
-		procinfo->print();
+		procinfo->print_close();
 	}
 
 	// FIXME: maybe I can improve this line (because I'm querying
@@ -1030,25 +961,21 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
-	int64_t fd;
-	pid_t pid;
+	int64_t fd, pid;
+	process *proc;
+	connection *conn;
 
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(int64_t));
-	fd = *(int64_t *)parinfo->m_val;
+	GET_PARAM(pgevent, 0, fd, int64_t);
+	GET_PARAM(pgevent, 1, pid, int64_t);
 
-	parinfo = pgevent->get_param(1);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	pid = *(pid_t *)parinfo->m_val;
-
-	process *proc = m_inspector->get_process(pid, false);
+	proc = m_inspector->get_process(pid, false);
 	if (proc == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
 		return;
 	}
 
-	connection *conn = proc->get_connection(fd);
+	conn = proc->get_connection(fd);
 	if (conn == NULL)
 	{
 		//TRACE_DEBUG("couldn't find connection");
@@ -1056,6 +983,9 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 	}
 
 	conn->m_flags |= connection::FLAGS_CLOSE_IN_PROGRESS;
+
+cleanup:
+	return;
 }
 
 
@@ -1063,36 +993,27 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	int64_t retval;
-	int64_t fd;
-	pid_t pid;
+	int64_t fd, pid;
+	process *proc;
+	connection *conn;
 
-	parinfo = pgevent->get_param(2);
-	ASSERT(parinfo->m_len == sizeof(int64_t));
-	fd = *(int64_t *)parinfo->m_val;
+	GET_PARAM(pgevent, 2, fd, int64_t);
+	GET_PARAM(pgevent, 1, pid, int64_t);
+	GET_PARAM(pgevent, 0, retval, int64_t);
 
-	parinfo = pgevent->get_param(1);
-	//ASSERT(parinfo->m_len == sizeof(pid_t));
-	pid = *(pid_t *)parinfo->m_val;
-
-	process *proc = m_inspector->get_process(pid, false);
+	proc = m_inspector->get_process(pid, false);
 	if (proc == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
 		return;
 	}
 
-	connection *conn = proc->get_connection(fd);
+	conn = proc->get_connection(fd);
 	if (conn == NULL)
 	{
 		//TRACE_DEBUG("couldn't find connection");
 		return;
 	}
-
-	parinfo = pgevent->get_param(0);
-	ASSERT(parinfo->m_len == sizeof(int64_t));
-	// FIXME: this assert should at least exit the function
-	// in production mode.
-	retval = *(int64_t *)parinfo->m_val;
 
 	if (conn->m_flags & connection::FLAGS_CLOSE_CANCELED)
 	{
@@ -1111,16 +1032,14 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 	{
 		TRACE_DEBUG("close returned with: %ld", retval);
 	}
+
+cleanup:
+	return;
 }
 
 
 void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 {
-
-	// FIXME: this name is not indicative
-	//bool retval = reset(pgevent);
-	//if (retval == false)
-	//	return;
 	pgevent->init();
 
 	switch(pgevent->m_pevt->type)

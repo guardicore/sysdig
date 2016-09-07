@@ -66,6 +66,7 @@ public:
 	}
 
 	void print();
+	void print_close();
 	void set_args(const char* args, size_t len);
 	void set_cgroups(const char* cgroups, size_t len);
 
@@ -74,8 +75,8 @@ public:
 	void delete_connection(int64_t fd);
 
 	string m_evt_name;
-	pid_t m_pid;
-	pid_t m_ppid;
+	int64_t m_pid;
+	int64_t m_ppid;
 	string m_comm;
 	string m_exe;
 	string m_pcomm;

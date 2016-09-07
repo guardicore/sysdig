@@ -14,10 +14,18 @@ void process::print()
 {
 	m_printed_exec = true;
 
-	printf("P %s %d \"%s\" \"%s\" %d \"%s\" %u \"%s\" \"%s\" \"%s\"\n",
+	printf("P %s %ld \"%s\" \"%s\" %ld \"%s\" %u \"%s\" \"%s\" \"%s\"\n",
 			m_evt_name.c_str(), m_pid, m_exe.c_str(), m_comm.c_str(),
 			m_ppid, m_pcomm.c_str(), m_uid, m_cwd.c_str(), m_cgroups_str.c_str(),
 			m_cmdline.c_str());
+}
+
+
+void process::print_close()
+{
+	m_evt_name = "procexit";
+
+	print();
 }
 
 
