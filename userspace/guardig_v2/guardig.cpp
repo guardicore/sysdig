@@ -6,97 +6,95 @@
 #include "trace.h"
 
 struct guardig_evttables g_infotables;
+struct stats g_stats = {};
+
 
 uint32_t interesting_events[] =
 {
 		/* STATE CHANGERS START */
-		PPME_SOCKET_SOCKETPAIR_E,
-		PPME_SOCKET_SOCKETPAIR_X,
-		PPME_SYSCALL_DUP_E,
-		PPME_SYSCALL_DUP_X,
-		PPME_SYSCALL_FCNTL_E,
-		PPME_SYSCALL_FCNTL_X,
-		PPME_SYSCALL_FORK_E,
+		//PPME_SOCKET_SOCKETPAIR_E,
+		//PPME_SOCKET_SOCKETPAIR_X,
+		//PPME_SYSCALL_DUP_E,
+		//PPME_SYSCALL_DUP_X,
+		//PPME_SYSCALL_FCNTL_E,
+		//PPME_SYSCALL_FCNTL_X,
+		////PPME_SYSCALL_FORK_E,
 		PPME_SYSCALL_FORK_X,
-		PPME_SYSCALL_FORK_17_E,
+		////PPME_SYSCALL_FORK_17_E,
 		PPME_SYSCALL_FORK_17_X,
-		PPME_SYSCALL_FORK_20_E,
+		////PPME_SYSCALL_FORK_20_E,
 		PPME_SYSCALL_FORK_20_X,
-		PPME_SYSCALL_VFORK_E,
+		////PPME_SYSCALL_VFORK_E,
 		PPME_SYSCALL_VFORK_X,
-		PPME_SYSCALL_VFORK_17_E,
+		////PPME_SYSCALL_VFORK_17_E,
 		PPME_SYSCALL_VFORK_17_X,
-		PPME_SYSCALL_VFORK_20_E,
+		////PPME_SYSCALL_VFORK_20_E,
 		PPME_SYSCALL_VFORK_20_X,
-		PPME_SYSCALL_CHROOT_E,
-		PPME_SYSCALL_CHROOT_X,
-		PPME_SYSCALL_SETSID_E,
-		PPME_SYSCALL_SETSID_X,
 		/* STATE CHANGERS END */
-		PPME_SYSCALL_EXECVE_8_E,
+		////PPME_SYSCALL_EXECVE_8_E,
 		PPME_SYSCALL_EXECVE_8_X,
-		PPME_SYSCALL_EXECVE_13_E,
+		////PPME_SYSCALL_EXECVE_13_E,
 		PPME_SYSCALL_EXECVE_13_X,
-		PPME_SYSCALL_EXECVE_14_E,
+		////PPME_SYSCALL_EXECVE_14_E,
 		PPME_SYSCALL_EXECVE_14_X,
-		PPME_SYSCALL_EXECVE_15_E,
+		////PPME_SYSCALL_EXECVE_15_E,
 		PPME_SYSCALL_EXECVE_15_X,
-		PPME_SYSCALL_EXECVE_16_E,
+		////PPME_SYSCALL_EXECVE_16_E,
 		PPME_SYSCALL_EXECVE_16_X,
-		PPME_SYSCALL_CLONE_11_E,
+		////PPME_SYSCALL_CLONE_11_E,
 		PPME_SYSCALL_CLONE_11_X,
-		PPME_SYSCALL_CLONE_16_E,
+		////PPME_SYSCALL_CLONE_16_E,
 		PPME_SYSCALL_CLONE_16_X,
-		PPME_SYSCALL_CLONE_17_E,
+		////PPME_SYSCALL_CLONE_17_E,
 		PPME_SYSCALL_CLONE_17_X,
-		PPME_SYSCALL_CLONE_20_E,
+		////PPME_SYSCALL_CLONE_20_E,
 		PPME_SYSCALL_CLONE_20_X,
-		PPME_PROCEXIT_E,
+		////PPME_PROCEXIT_E,
 		PPME_PROCEXIT_X,
-		PPME_PROCEXIT_1_E,
+		////PPME_PROCEXIT_1_E,
 		PPME_PROCEXIT_1_X,
 
-		PPME_SOCKET_SOCKET_E,
+		////PPME_SOCKET_SOCKET_E,
 		PPME_SOCKET_SOCKET_X,
-		PPME_SOCKET_SEND_E,
+		////PPME_SOCKET_SEND_E,
 		PPME_SOCKET_SEND_X,
-		PPME_SOCKET_RECV_E,
+		////PPME_SOCKET_RECV_E,
 		PPME_SOCKET_RECV_X,
-		PPME_SOCKET_SENDTO_E,
+		////PPME_SOCKET_SENDTO_E,
 		PPME_SOCKET_SENDTO_X,
-		PPME_SOCKET_RECVFROM_E,
+		////PPME_SOCKET_RECVFROM_E,
 		PPME_SOCKET_RECVFROM_X,
-		//PPME_SOCKET_CONNECT_E,
+		////PPME_SOCKET_CONNECT_E,
 		PPME_SOCKET_CONNECT_X,
-		PPME_SOCKET_ACCEPT_E,
+		////PPME_SOCKET_ACCEPT_E,
 		PPME_SOCKET_ACCEPT_X,
-		PPME_SOCKET_ACCEPT4_E,
+		////PPME_SOCKET_ACCEPT4_E,
 		PPME_SOCKET_ACCEPT4_X,
-		//PPME_SOCKET_ACCEPT4_5_E,
+		////PPME_SOCKET_ACCEPT4_5_E,
 		PPME_SOCKET_ACCEPT4_5_X,
-		//PPME_SOCKET_ACCEPT_5_E,
+		////PPME_SOCKET_ACCEPT_5_E,
 		PPME_SOCKET_ACCEPT_5_X,
 		PPME_SYSCALL_CLOSE_E,
 		PPME_SYSCALL_CLOSE_X,
-		//PPME_SOCKET_SHUTDOWN_E,
-		//PPME_SOCKET_SHUTDOWN_X,
-		//PPME_SYSCALL_WRITE_E,
+		////PPME_SOCKET_SHUTDOWN_E,
+		////PPME_SOCKET_SHUTDOWN_X,
+		////PPME_SYSCALL_WRITE_E,
 		PPME_SYSCALL_WRITE_X,
 		// FIXME: what about writev and readv?
-		//PPME_SYSCALL_READ_E,
+		////PPME_SYSCALL_READ_E,
 		PPME_SYSCALL_READ_X,
-		PPME_SOCKET_LISTEN_E,
-		PPME_SOCKET_LISTEN_X,
-		PPME_SOCKET_BIND_E,
-		PPME_SOCKET_BIND_X,
-		PPME_SOCKET_SENDMSG_E,
-		PPME_SOCKET_SENDMSG_X,
-		PPME_SOCKET_SENDMMSG_E,
-		PPME_SOCKET_SENDMMSG_X,
-		PPME_SOCKET_RECVMSG_E,
-		PPME_SOCKET_RECVMSG_X,
-		PPME_SOCKET_RECVMMSG_E,
-		PPME_SOCKET_RECVMMSG_X
+		//PPME_SOCKET_LISTEN_E,
+		//PPME_SOCKET_LISTEN_X,
+		//PPME_SOCKET_BIND_E,
+		//PPME_SOCKET_BIND_X,
+		//PPME_SOCKET_SENDMSG_E,
+		//PPME_SOCKET_SENDMSG_X,
+		//PPME_SOCKET_SENDMMSG_E,
+		//PPME_SOCKET_SENDMMSG_X,
+		//PPME_SOCKET_RECVMSG_E,
+		//PPME_SOCKET_RECVMSG_X,
+		//PPME_SOCKET_RECVMMSG_E,
+		//PPME_SOCKET_RECVMMSG_X
 };
 
 
@@ -110,7 +108,7 @@ void guardig::add_process(process &procinfo) //, bool from_scap_proctable)
 
 	//threadinfo.compute_program_hash();
 
-	process &newentry = (m_proctable[procinfo.m_pid] = procinfo);
+	m_proctable[procinfo.m_pid] = procinfo;
 }
 
 
@@ -118,16 +116,30 @@ process *guardig::find_process(int64_t pid)
 {
 	process_map_iterator_t it;
 
+	//
+	// Try looking up in our simple cache
+	//
+	if(m_last_pid && pid == m_last_pid)
+	{
+#ifdef GATHER_INTERNAL_STATS
+		g_stats.m_n_cached_proc_lookups++;
+#endif
+		return m_last_procinfo;
+	}
+
 	it = m_proctable.find(pid);
 	if (it != m_proctable.end())
 	{
+#ifdef GATHER_INTERNAL_STATS
+		g_stats.m_n_noncached_proc_lookups++;
+#endif
+		m_last_pid = pid;
+		m_last_procinfo = &(it->second);
 		return &(it->second);
 	}
 	else
 	{
 		return NULL;
-		// FIXME: they have a cache of the last used threadinfo.
-		// I should add that eventually.
 	}
 }
 
@@ -168,6 +180,10 @@ void guardig::delete_process(int64_t pid)
 {
 	process_map_iterator_t it;
 
+	// Reset the cache if necessary
+	if (m_last_pid == pid)
+		m_last_pid = 0;
+
 	it = m_proctable.find(pid);
 	if (it != m_proctable.end())
 	{
@@ -176,8 +192,6 @@ void guardig::delete_process(int64_t pid)
 	else
 	{
 		return;
-
-		// FIXME: clear last process cache
 	}
 }
 
@@ -204,7 +218,6 @@ void init_event_mask(scap_t *handle)
 }
 
 
-#define DROP_REPORT_SECONDS 10
 void print_drop_statistics(scap_t* capture)
 {
 	static uint64_t nevts = -1;
@@ -227,18 +240,20 @@ void print_drop_statistics(scap_t* capture)
 		if (scap_get_stats(capture, &cstats) != SCAP_SUCCESS)
 			return;
 
-		fprintf(stderr, "Driver Events:%lu Usermode Events: %lu Driver Drops:%lu\n",
-			cstats.n_evts,
-			nevts,
-			cstats.n_drops);
-
 		total_drop_prctg = (cstats.n_drops / (cstats.n_evts * 1.0)) * 100;
 		last_drop_prctg = ((cstats.n_drops - last_dropped_devts) / ((cstats.n_evts - last_devts) * 1.0)) * 100;
 
 		last_devts = cstats.n_evts;
 		last_dropped_devts = cstats.n_drops;
 
-		fprintf(stderr, "Total Dropped: %u%% Last Dropped: %u%%\n", total_drop_prctg, last_drop_prctg);
+		fprintf(stderr, "S Driver Events:%lu Usermode Events:%lu Driver Drops:%lu Total Dropped: %u%% Last Dropped: %u%%\n",
+					cstats.n_evts, nevts, cstats.n_drops, total_drop_prctg, last_drop_prctg);
+
+#ifdef GATHER_INTERNAL_STATS
+		fprintf(stderr, "S Cached Proc: %lu, Non Cached Proc: %lu, Cached FD: %lu, Non Cached FD: %lu\n",
+				g_stats.m_n_cached_proc_lookups, g_stats.m_n_noncached_proc_lookups,
+				g_stats.m_n_cached_fd_lookups, g_stats.m_n_noncached_fd_lookups);
+#endif
 	}
 }
 
@@ -254,8 +269,6 @@ int32_t main()
 	guardig inspector;
 	guardig_evt gevent;
 	guardig_parser parser;
-
-	TRACE_DEBUG("Guardig starting..");
 
 	// FIXME: do I need to define this callback?
 	/*

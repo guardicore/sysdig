@@ -18,6 +18,10 @@
 //
 #define MAX_CONN_TABLE_SIZE 4096
 
+//
+// Period for reporting drop events statistics
+//
+#define DROP_REPORT_SECONDS 10
 
 
 #endif /* USERSPACE_GUARDIG_SETTINGS_H_ */

@@ -12,6 +12,16 @@ using namespace std;
 typedef unordered_map<int64_t, process> process_map_t;
 typedef process_map_t::iterator process_map_iterator_t;
 
+
+class stats {
+public:
+	uint64_t m_n_cached_fd_lookups;
+	uint64_t m_n_noncached_fd_lookups;
+	uint64_t m_n_cached_proc_lookups;
+	uint64_t m_n_noncached_proc_lookups;
+};
+
+
 class guardig {
 
 public:
@@ -21,6 +31,8 @@ public:
 		m_max_conntable_size = MAX_CONN_TABLE_SIZE;
 		m_max_proc_table_size = MAX_PROC_TABLE_SIZE;
 		m_capture = NULL;
+		m_last_procinfo = NULL;
+		m_last_pid = 0;
 	}
 
 	process *find_process(int64_t pid);
@@ -32,6 +44,9 @@ public:
 	uint32_t m_max_proc_table_size;
 
 	process_map_t m_proctable;
+	int64_t m_last_pid;
+	process *m_last_procinfo;
+
 	scap_t *m_capture;
 };
 

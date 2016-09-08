@@ -47,6 +47,8 @@ public:
 		m_uid = -1;
 		m_printed_exec = false;
 		m_had_connection = false;
+		m_last_accessed_conninfo = NULL;
+		m_last_accessed_fd = -1;
 	}
 
 	void init(scap_threadinfo *pi)
@@ -63,6 +65,8 @@ public:
 		m_uid = pi->uid;
 		m_printed_exec = false;
 		m_had_connection = false;
+		m_last_accessed_conninfo = NULL;
+		m_last_accessed_fd = -1;
 	}
 
 	void print();
@@ -73,6 +77,7 @@ public:
 	void add_connection(connection &conninfo);
 	connection *get_connection(int64_t fd);
 	void delete_connection(int64_t fd);
+	void reset_cache();
 
 	string m_evt_name;
 	int64_t m_pid;
@@ -90,6 +95,11 @@ public:
 	vector<pair<string, string>> m_cgroups;
 
 	connection_map_t m_conntable;
+	//
+	// Simple connection cache
+	//
+	int64_t m_last_accessed_fd;
+	connection *m_last_accessed_conninfo;
 
 private:
 	void create_cgroups_str();
