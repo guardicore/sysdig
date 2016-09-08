@@ -5,6 +5,7 @@
 #include "trace.h"
 #include "connection.h"
 #include "process.h"
+#include "utils.h"
 
 
 #define GET_PARAM(evt, num, var, type) 			\
@@ -77,8 +78,23 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	}
 	else if(*packed_data == PPM_AF_INET6)
 	{
-		TRACE_DEBUG("IPv6 is not supported yet");
-		return;
+		uint8_t* sip = packed_data + 1;
+		uint8_t* dip = packed_data + 19;
+
+		if(guardig_utils::is_ipv4_mapped_ipv6(sip) && guardig_utils::is_ipv4_mapped_ipv6(dip))
+		{
+			conn.m_sip = *(uint32_t *)(packed_data + 13);
+			conn.m_sport = *(uint16_t *)(packed_data + 17);
+			conn.m_dip = *(uint32_t *)(packed_data + 31);
+			conn.m_dport = *(uint16_t *)(packed_data + 35);
+			conn.m_type = SCAP_FD_IPV4_SOCK;
+			conn.m_proto = SOCK_STREAM;
+		}
+		else
+		{
+			TRACE_DEBUG("ipv6 is not supported yet");
+			return;
+		}
 	}
 	else if(*packed_data == PPM_AF_UNIX)
 	{
@@ -164,8 +180,22 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	}
 	else if (family == PPM_AF_INET6)
 	{
-		TRACE_DEBUG("ipv6 is not supported yet");
-		return;
+		uint8_t* sip = packed_data + 1;
+		uint8_t* dip = packed_data + 19;
+
+		if(guardig_utils::is_ipv4_mapped_ipv6(sip) && guardig_utils::is_ipv4_mapped_ipv6(dip))
+		{
+			conn.m_sip = *(uint32_t *)(packed_data + 13);
+			conn.m_sport = *(uint16_t *)(packed_data + 17);
+			conn.m_dip = *(uint32_t *)(packed_data + 31);
+			conn.m_dport = *(uint16_t *)(packed_data + 35);
+			conn.m_type = SCAP_FD_IPV4_SOCK;
+		}
+		else
+		{
+			TRACE_DEBUG("ipv6 is not supported yet");
+			return;
+		}
 	}
 	else if (family == PPM_AF_UNIX)
 	{
@@ -255,7 +285,9 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 	connection *conn;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
-	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
+	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X ||
+			pgevent->m_pevt->type == PPME_SYSCALL_READV_X ||
+			pgevent->m_pevt->type == PPME_SYSCALL_PREADV_X)
 	{
 		GET_PARAM(pgevent, 3, fd, int64_t);
 		GET_PARAM(pgevent, 4, pid, int64_t);
@@ -628,6 +660,8 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 
 	case PPME_SYSCALL_PWRITE_X:
 	case PPME_SYSCALL_WRITE_X:
+	case PPME_SYSCALL_WRITEV_X:
+	case PPME_SYSCALL_PWRITEV_X:
 	case PPME_SOCKET_SEND_X:
 	case PPME_SOCKET_SENDTO_X:
 		parse_send_exit(pgevent);
@@ -635,6 +669,8 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 
 	case PPME_SYSCALL_PREAD_X:
 	case PPME_SYSCALL_READ_X:
+	case PPME_SYSCALL_READV_X:
+	case PPME_SYSCALL_PREADV_X:
 	case PPME_SOCKET_RECV_X:
 	case PPME_SOCKET_RECVFROM_X:
 		parse_recv_exit(pgevent);

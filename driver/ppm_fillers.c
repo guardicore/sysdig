@@ -3549,6 +3549,15 @@ static int f_sys_readv_x(struct event_filler_arguments *args)
 	unsigned long iovcnt;
 
 	/*
+	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
+	 */
+	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	if (!is_socket(val))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
+	args->fd = (int)val;
+
+	/*
 	 * res
 	 */
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
@@ -3573,6 +3582,14 @@ static int f_sys_readv_x(struct event_filler_arguments *args)
 		iov = (const struct iovec __user *)val;
 		res = parse_readv_writev_bufs(args, iov, iovcnt, retval, PRB_FLAG_PUSH_ALL);
 	}
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -3638,6 +3655,15 @@ static int f_sys_writev_pwritev_x(struct event_filler_arguments *args)
 	unsigned long iovcnt;
 
 	/*
+	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
+	 */
+	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	if (!is_socket(val))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
+	args->fd = (int)val;
+
+	/*
 	 * res
 	 */
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
@@ -3665,6 +3691,14 @@ static int f_sys_writev_pwritev_x(struct event_filler_arguments *args)
 		iov = (const struct iovec __user *)val;
 		res = parse_readv_writev_bufs(args, iov, iovcnt, args->consumer->snaplen, PRB_FLAG_PUSH_DATA | PRB_FLAG_IS_WRITE);
 	}
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -3723,6 +3757,15 @@ static int f_sys_preadv_x(struct event_filler_arguments *args)
 	unsigned long iovcnt;
 
 	/*
+	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
+	 */
+	syscall_get_arguments(current, args->regs, 0, 1, &val);
+	if (!is_socket(val))
+		return PPM_FAILURE_GUARDIC_SILENT;
+
+	args->fd = (int)val;
+
+	/*
 	 * res
 	 */
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
@@ -3746,6 +3789,14 @@ static int f_sys_preadv_x(struct event_filler_arguments *args)
 		iov = (const struct iovec __user *)val;
 		res = parse_readv_writev_bufs(args, iov, iovcnt, retval, PRB_FLAG_PUSH_ALL);
 	}
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, current->tgid, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
