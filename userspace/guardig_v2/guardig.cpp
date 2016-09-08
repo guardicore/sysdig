@@ -4,6 +4,7 @@
 #include "event.h"
 #include "parser.h"
 #include "trace.h"
+#include "defs.h"
 
 struct guardig_evttables g_infotables;
 struct stats g_stats = {};
@@ -295,6 +296,10 @@ int32_t main()
 
 	inspector.m_capture = capture;
 	parser.m_inspector = &inspector;
+
+	// Reduce the data passed from kernel with i/o commands like write/read to minimum
+	if(scap_set_snaplen(capture, 1) != SCAP_SUCCESS)
+		ASSERT(false);
 
 	init_event_mask(capture);
 	init_info_tables();

@@ -268,6 +268,9 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 		return;
 	}
 
+	// FIXME: make sanity checks on the connection tuple to make sure
+	// we're adding the result to the right connection.
+	// For example, what if we missed the close and new connect events?
 	if (res > 0)
 		conn->m_sent_bytes += res;
 
@@ -312,6 +315,9 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		return;
 	}
 
+	// FIXME: make sanity checks on the connection tuple to make sure
+	// we're adding the result to the right connection.
+	// For example, what if we missed the close and new connect events?
 	if (res > 0)
 		conn->m_recv_bytes += res;
 
