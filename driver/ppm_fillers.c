@@ -1443,29 +1443,25 @@ cgroups_error:
 		res = val_to_ring(args, (int64_t)(long)args->str_storage, env_len, false, 0);
 		if (unlikely(res != PPM_SUCCESS))
 			return res;
-
-		if (current->parent)
-		{
-			ppid = current->parent->tgid;
-			strlcpy(pcomm, current->parent->comm, sizeof(pcomm));
-		}
-		else
-		{
-			printk("parent is NULL\n");
-		}
-
-		res = val_to_ring(args, (int64_t)ppid, 0, false, 0);
-		if (unlikely(res != PPM_SUCCESS))
-			return res;
-
-		res = val_to_ring(args, (int64_t)pcomm, 0, false, 0);
-		if (unlikely(res != PPM_SUCCESS))
-			return res;
-
-		res = val_to_ring(args, (int64_t)current_uid().val, 0, false, 0);
-		if (unlikely(res != PPM_SUCCESS))
-			return res;
 	}
+
+	if (current->parent)
+	{
+		ppid = current->parent->tgid;
+		strlcpy(pcomm, current->parent->comm, sizeof(pcomm));
+	}
+
+	res = val_to_ring(args, (int64_t)ppid, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, (int64_t)pcomm, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = val_to_ring(args, (int64_t)current_uid().val, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
 
 	return add_sentinel(args);
 }
