@@ -8,12 +8,20 @@
 #include <arpa/inet.h>
 #include "event.h"
 #include "connection.h"
+#include "process.h"
+#include "defs.h"
 
 void connection::print()
 {
 	struct in_addr sip, dip;
 	char sip_buf[20], dip_buf[20];
 	const char *proto, *type;
+
+	if (m_procinfo == NULL)
+	{
+		ASSERT(false);
+		return;
+	}
 
 	if (m_type == SCAP_FD_IPV4_SOCK)
 		type = "ipv4";
@@ -37,9 +45,9 @@ void connection::print()
 	dip_buf[sizeof(dip_buf) - 1] = '\0';
 
 	printf("C %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d\n",
-				m_evt_name.c_str(), m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
-				proto, m_exe.c_str(), m_comm.c_str(), m_ppid, m_pcomm.c_str(), sip_buf,
-				m_sport, dip_buf, m_dport, m_uid);
+				m_evt_name.c_str(), m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
+				proto, m_procinfo->m_exe.c_str(), m_procinfo->m_comm.c_str(), m_procinfo->m_ppid, m_procinfo->m_pcomm.c_str(), sip_buf,
+				m_sport, dip_buf, m_dport, m_procinfo->m_uid);
 }
 
 
@@ -57,6 +65,12 @@ void connection::print_volume()
 	struct in_addr sip, dip;
 	char sip_buf[20], dip_buf[20];
 	const char *proto, *type;
+
+	if (m_procinfo == NULL)
+	{
+		ASSERT(false);
+		return;
+	}
 
 	if (m_type == SCAP_FD_IPV4_SOCK)
 		type = "ipv4";
@@ -80,8 +94,8 @@ void connection::print_volume()
 	dip_buf[sizeof(dip_buf) - 1] = '\0';
 
 	printf("V %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d %lu %lu\n",
-				"report", m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
-				proto, m_exe.c_str(), m_comm.c_str(), m_ppid, m_pcomm.c_str(), sip_buf,
-				m_sport, dip_buf, m_dport, m_uid, m_sent_bytes, m_recv_bytes);
+				"report", m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode, m_fd, 1 /* threads */, type,
+				proto, m_procinfo->m_exe.c_str(), m_procinfo->m_comm.c_str(), m_procinfo->m_ppid, m_procinfo->m_pcomm.c_str(), sip_buf,
+				m_sport, dip_buf, m_dport, m_procinfo->m_uid, m_sent_bytes, m_recv_bytes);
 }
 

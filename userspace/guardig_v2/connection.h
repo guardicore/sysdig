@@ -13,7 +13,7 @@
 
 using namespace std;
 
-class guardig_evt;
+class process;
 
 class connection
 {
@@ -32,8 +32,6 @@ public:
 	void init()
 	{
 		m_evt_name = "unknown";
-		m_pid = -1;
-		m_ppid = -1;
 		m_time = 0;
 		m_time_s = 0;
 		m_time_ns = 0;
@@ -41,17 +39,14 @@ public:
 		m_fd = -1;
 		m_type = SCAP_FD_UNINITIALIZED;
 		m_proto = 0;
-		m_exe = "unknown";
-		m_comm = "unknown";
-		m_pcomm = "unknown";
 		m_sip = 0;
 		m_sport = 0;
 		m_dip = 0;
 		m_dport = 0;
-		m_uid = -1;
 		m_flags = FLAGS_NONE;
 		m_sent_bytes = 0;
 		m_recv_bytes = 0;
+		m_procinfo = NULL;
 	}
 
 	void print();
@@ -73,8 +68,6 @@ public:
 	};
 
 	string m_evt_name;
-	int64_t m_pid;
-	int64_t m_ppid;
 	uint64_t m_time;
 	uint32_t m_time_s;
 	uint32_t m_time_ns;
@@ -82,17 +75,15 @@ public:
 	int64_t m_fd;
 	scap_fd_type m_type;
 	uint32_t m_proto;
-	string m_exe;
-	string m_comm;
-	string m_pcomm;
 	uint32_t m_sip;
 	uint16_t m_sport;
 	uint32_t m_dip;
 	uint16_t m_dport;
-	uint32_t m_uid;
 	uint32_t m_flags;
 	uint64_t m_sent_bytes;
 	uint64_t m_recv_bytes;
+
+	process *m_procinfo;
 };
 
 

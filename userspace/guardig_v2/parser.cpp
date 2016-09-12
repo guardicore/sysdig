@@ -40,6 +40,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	uint8_t* packed_data;
 	connection conn("accept");
 	process *procinfo;
+	int64_t pid;
 
 	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
 		  pgevent->m_pevt->type == PPME_SOCKET_ACCEPT_5_X))
@@ -107,33 +108,43 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	GET_PARAM(pgevent, 6, conn.m_pid, int64_t);
-	GET_PARAM_BUFFER(pgevent, 7, conn.m_comm, char*);
-	GET_PARAM(pgevent, 8, conn.m_ppid, int64_t);
-	GET_PARAM_BUFFER(pgevent, 9, conn.m_pcomm, char*);
-	GET_PARAM(pgevent, 10, conn.m_uid, uint32_t);
+	GET_PARAM(pgevent, 6, pid, int64_t);
 
 	//
 	// Add the entry to the table
 	//
-	procinfo = m_inspector->get_process(conn.m_pid, true);
+	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
 		//
-		// The process is already closed, just print the connection
-		// and immediately its shutdown.
+		// The process table is full
 		//
-		conn.print();
-		conn.print_close(conn.m_time);
-	}
-	else
-	{
-		if (!procinfo->m_printed_exec)
-			procinfo->print();
+		TRACE_DEBUG("process table is full");
+		return;
 
-		procinfo->add_connection(conn);
-		conn.print();
+
 	}
+
+	conn.m_procinfo = procinfo;
+
+	if (procinfo->m_is_fake)
+	{
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		//
+		GET_PARAM_BUFFER(pgevent, 7, conn.m_procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 8, conn.m_procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 9, conn.m_procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 10, conn.m_procinfo->m_uid, uint32_t);
+	}
+
+
+	if (!procinfo->m_printed_exec)
+		procinfo->print();
+
+	procinfo->add_connection(conn);
+	conn.print();
 
 cleanup:
 	return;
@@ -147,6 +158,7 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	uint8_t family;
 	connection conn("connect");
 	process *procinfo;
+	int64_t pid;
 
 	conn.set_time(pgevent->m_pevt->ts);
 
@@ -212,30 +224,43 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 
 	GET_PARAM(pgevent, 2, conn.m_fd, int64_t);
 	GET_PARAM(pgevent, 3, conn.m_proto, uint16_t);
-	GET_PARAM(pgevent, 4, conn.m_pid, int64_t);
-	GET_PARAM_BUFFER(pgevent, 5, conn.m_comm, char*);
-	GET_PARAM(pgevent, 6, conn.m_ppid, int64_t);
-	GET_PARAM_BUFFER(pgevent, 7, conn.m_pcomm, char*);
-	GET_PARAM(pgevent, 8, conn.m_uid, uint32_t);
+	GET_PARAM(pgevent, 4, pid, int64_t);
 
-	procinfo = m_inspector->get_process(conn.m_pid, true);
+	//
+	// Add the entry to the table
+	//
+	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
 		//
-		// The process is already closed, just print the connection
-		// and immediately its shutdown.
+		// The process table is full
 		//
-		conn.print();
-		conn.print_close(conn.m_time);
-	}
-	else
-	{
-		if (!procinfo->m_printed_exec)
-			procinfo->print();
+		TRACE_DEBUG("process table is full");
+		return;
 
-		conn.print();
-		procinfo->add_connection(conn);
+
 	}
+
+	conn.m_procinfo = procinfo;
+
+	if (procinfo->m_is_fake)
+	{
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		//
+		GET_PARAM_BUFFER(pgevent, 5, conn.m_procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 6, conn.m_procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 7, conn.m_procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 8, conn.m_procinfo->m_uid, uint32_t);
+	}
+
+
+	if (!procinfo->m_printed_exec)
+		procinfo->print();
+
+	procinfo->add_connection(conn);
+	conn.print();
 
 cleanup:
 	return;

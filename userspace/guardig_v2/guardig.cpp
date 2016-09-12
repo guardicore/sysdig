@@ -139,6 +139,7 @@ process *guardig::get_process(int64_t pid, bool query_os)
 			// Add a fake entry to avoid a continuous lookup
 			//
 			newproc.m_pid = pid;
+			newproc.m_is_fake = true;
 		}
 
 		add_process(newproc);

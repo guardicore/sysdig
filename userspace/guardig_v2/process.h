@@ -48,6 +48,7 @@ public:
 		m_uid = -1;
 		m_printed_exec = false;
 		m_had_connection = false;
+		m_is_fake = false;
 	}
 
 	void init(scap_threadinfo *pi)
@@ -64,6 +65,7 @@ public:
 		m_uid = pi->uid;
 		m_printed_exec = false;
 		m_had_connection = false;
+		m_is_fake = false;
 	}
 
 	void print();
@@ -87,6 +89,7 @@ public:
 	uint32_t m_uid;
 	bool m_printed_exec;
 	bool m_had_connection;
+	bool m_is_fake;
 	vector<string> m_args;
 	vector<pair<string, string>> m_cgroups;
 
