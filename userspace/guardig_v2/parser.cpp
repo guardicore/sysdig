@@ -34,161 +34,18 @@
 	} while(0)
 
 
-void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
+void parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 {
-	guardig_evt_param *parinfo;
-	uint8_t* packed_data;
-	connection conn("accept");
-	process *procinfo;
-	int64_t pid;
-
-	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
-		  pgevent->m_pevt->type == PPME_SOCKET_ACCEPT_5_X))
-	{
-		TRACE_DEBUG("accept variant not supported yet");
-		return;
-	}
-
-	conn.set_time(pgevent->m_pevt->ts);
-	conn.m_errorcode = 0;
-
-	// Extract the fd
-	GET_PARAM(pgevent, 0, conn.m_fd, int64_t);
-	if(conn.m_fd < 0)
-	{
-		// Accept failure. Do nothing.
-		return;
-	}
-
-	// Extract the address
-	// This might not work for socket types that we don't support, so we have the assertion
-	// to make sure that this is not a type of socket that we support.
-	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-
-	//
-	// Populate the fd info class
-	//
-	if(*packed_data == PPM_AF_INET)
-	{
-		conn.m_sip = *(uint32_t *)(packed_data + 1);
-		conn.m_sport = *(uint16_t *)(packed_data + 5);
-		conn.m_dip = *(uint32_t *)(packed_data + 7);
-		conn.m_dport = *(uint16_t *)(packed_data + 11);
-		conn.m_type = SCAP_FD_IPV4_SOCK;
-		conn.m_proto = SOCK_STREAM;
-	}
-	else if(*packed_data == PPM_AF_INET6)
-	{
-		uint8_t* sip = packed_data + 1;
-		uint8_t* dip = packed_data + 19;
-
-		if(guardig_utils::is_ipv4_mapped_ipv6(sip) && guardig_utils::is_ipv4_mapped_ipv6(dip))
-		{
-			conn.m_sip = *(uint32_t *)(packed_data + 13);
-			conn.m_sport = *(uint16_t *)(packed_data + 17);
-			conn.m_dip = *(uint32_t *)(packed_data + 31);
-			conn.m_dport = *(uint16_t *)(packed_data + 35);
-			conn.m_type = SCAP_FD_IPV4_SOCK;
-			conn.m_proto = SOCK_STREAM;
-		}
-		else
-		{
-			TRACE_DEBUG("ipv6 is not supported yet");
-			return;
-		}
-	}
-	else if(*packed_data == PPM_AF_UNIX)
-	{
-		TRACE_DEBUG("unix socket is ignored");
-		return;
-	}
-	else
-	{
-		TRACE_DEBUG("unsupported family: %d", *packed_data);
-		return;
-	}
-
-	GET_PARAM(pgevent, 6, pid, int64_t);
-
-	//
-	// Add the entry to the table
-	//
-	procinfo = m_inspector->get_process(pid, true);
-	if (procinfo == NULL)
-	{
-		//
-		// The process table is full
-		//
-		TRACE_DEBUG("process table is full");
-		return;
-
-
-	}
-
-	conn.m_procinfo = procinfo;
-
-	if (procinfo->m_is_fake)
-	{
-		//
-		// We didn't see the process creation and didn't find it in /proc as well.
-		// Fill in the process details from the current event.
-		//
-		GET_PARAM_BUFFER(pgevent, 7, conn.m_procinfo->m_comm, char*);
-		GET_PARAM(pgevent, 8, conn.m_procinfo->m_ppid, int64_t);
-		GET_PARAM_BUFFER(pgevent, 9, conn.m_procinfo->m_pcomm, char*);
-		GET_PARAM(pgevent, 10, conn.m_procinfo->m_uid, uint32_t);
-	}
-
-
-	if (!procinfo->m_printed_exec)
-		procinfo->print();
-
-	procinfo->add_connection(conn);
-	conn.print();
-
-cleanup:
-	return;
-}
-
-
-void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
-{
-	guardig_evt_param *parinfo;
-	uint8_t *packed_data;
-	uint8_t family;
-	connection conn("connect");
-	process *procinfo;
-	int64_t pid;
-
-	conn.set_time(pgevent->m_pevt->ts);
-
-	GET_PARAM(pgevent, 0, conn.m_errorcode, uint64_t);
-
-	if (conn.m_errorcode < 0)
-	{
-		// connections that return with a SE_EINPROGRESS are totally legit.
-		if(conn.m_errorcode != -EINPROGRESS)
-		{
-			return;
-		}
-	}
-
-	// This can fail for socket types that we don't support, so we have the assertion
-	// to make sure that this is not a type of socket that we support.
-	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-
 	// Validate the family
-	family = *packed_data;
+	uint8_t family = *packed_data;
 
 	// Fill the fd with the socket info
 	if(family == PPM_AF_INET)
 	{
-		// Update the FD info with this tuple
-		conn.m_sip = *(uint32_t *)(packed_data + 1);
-		conn.m_sport = *(uint16_t *)(packed_data + 5);
-		conn.m_dip = *(uint32_t *)(packed_data + 7);
-		conn.m_dport = *(uint16_t *)(packed_data + 11);
-		conn.m_type = SCAP_FD_IPV4_SOCK;
+		conntuple->m_sip = *(uint32_t *)(packed_data + 1);
+		conntuple->m_sport = *(uint16_t *)(packed_data + 5);
+		conntuple->m_dip = *(uint32_t *)(packed_data + 7);
+		conntuple->m_dport = *(uint16_t *)(packed_data + 11);
 	}
 	else if (family == PPM_AF_INET6)
 	{
@@ -197,11 +54,10 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 
 		if(guardig_utils::is_ipv4_mapped_ipv6(sip) && guardig_utils::is_ipv4_mapped_ipv6(dip))
 		{
-			conn.m_sip = *(uint32_t *)(packed_data + 13);
-			conn.m_sport = *(uint16_t *)(packed_data + 17);
-			conn.m_dip = *(uint32_t *)(packed_data + 31);
-			conn.m_dport = *(uint16_t *)(packed_data + 35);
-			conn.m_type = SCAP_FD_IPV4_SOCK;
+			conntuple->m_sip = *(uint32_t *)(packed_data + 13);
+			conntuple->m_sport = *(uint16_t *)(packed_data + 17);
+			conntuple->m_dip = *(uint32_t *)(packed_data + 31);
+			conntuple->m_dport = *(uint16_t *)(packed_data + 35);
 		}
 		else
 		{
@@ -221,14 +77,37 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 		ASSERT(false);
 		return;
 	}
+}
 
-	GET_PARAM(pgevent, 2, conn.m_fd, int64_t);
-	GET_PARAM(pgevent, 3, conn.m_proto, uint16_t);
-	GET_PARAM(pgevent, 4, pid, int64_t);
 
-	//
-	// Add the entry to the table
-	//
+void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	uint8_t* packed_data;
+	process *procinfo;
+	filedescriptor *fdinfo;
+	filedescriptor newfd;
+	connection newconn("accept");
+	int64_t pid, fd;
+
+	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
+		  pgevent->m_pevt->type == PPME_SOCKET_ACCEPT_5_X))
+	{
+		TRACE_DEBUG("accept variant not supported yet");
+		return;
+	}
+
+	// Extract the pid
+	GET_PARAM(pgevent, 6, pid, int64_t);
+
+	// Extract the fd
+	GET_PARAM(pgevent, 0, fd, int64_t);
+	if(fd < 0)
+	{
+		// Accept failure. Do nothing.
+		return;
+	}
+
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
@@ -237,30 +116,132 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 		//
 		TRACE_DEBUG("process table is full");
 		return;
-
-
 	}
 
-	conn.m_procinfo = procinfo;
-
-	if (procinfo->m_is_fake)
+	if (procinfo->m_uid == -1)
 	{
 		//
 		// We didn't see the process creation and didn't find it in /proc as well.
 		// Fill in the process details from the current event.
 		//
-		GET_PARAM_BUFFER(pgevent, 5, conn.m_procinfo->m_comm, char*);
-		GET_PARAM(pgevent, 6, conn.m_procinfo->m_ppid, int64_t);
-		GET_PARAM_BUFFER(pgevent, 7, conn.m_procinfo->m_pcomm, char*);
-		GET_PARAM(pgevent, 8, conn.m_procinfo->m_uid, uint32_t);
+		GET_PARAM_BUFFER(pgevent, 7, procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 8, procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 9, procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 10, procinfo->m_uid, uint32_t);
 	}
 
+	newfd.m_fd = fd;
+	newfd.m_type = SCAP_FD_IPV4_SOCK;
+	newfd.m_proto = SOCK_STREAM;
+	newfd.m_procinfo = procinfo;
+
+	// Extract the address
+	// This might not work for socket types that we don't support, so we have the assertion
+	// to make sure that this is not a type of socket that we support.
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+
+	parse_packed_tuple(packed_data, &newconn.m_conntuple);
+
+	fdinfo = procinfo->add_fd(newfd);
+	if (fdinfo == NULL)
+	{
+		//
+		// The fd table is full
+		//
+		TRACE_DEBUG("fd table is full");
+		return;
+	}
+
+	newconn.set_time(pgevent->m_pevt->ts);
+	newconn.m_errorcode = 0;
+	newconn.m_fdinfo = fdinfo;
+
+	fdinfo->add_connection(newconn);
 
 	if (!procinfo->m_printed_exec)
 		procinfo->print();
 
-	procinfo->add_connection(conn);
-	conn.print();
+	newconn.print();
+
+cleanup:
+	return;
+}
+
+
+void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	uint8_t *packed_data;
+	filedescriptor *fdinfo;
+	filedescriptor newfd;
+	connection newconn("connect");
+	process *procinfo;
+	int64_t pid;
+
+	GET_PARAM(pgevent, 0, newconn.m_errorcode, uint64_t);
+
+	if (newconn.m_errorcode < 0)
+	{
+		// connections that return with a SE_EINPROGRESS are totally legit.
+		if(newconn.m_errorcode != -EINPROGRESS)
+		{
+			return;
+		}
+	}
+
+	GET_PARAM(pgevent, 4, pid, int64_t);
+
+	procinfo = m_inspector->get_process(pid, true);
+	if (procinfo == NULL)
+	{
+		//
+		// The process table is full
+		//
+		TRACE_DEBUG("process table is full");
+		return;
+	}
+
+	if (procinfo->m_uid == -1)
+	{
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		//
+		GET_PARAM_BUFFER(pgevent, 5, procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 6, procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 7, procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 8, procinfo->m_uid, uint32_t);
+	}
+
+	GET_PARAM(pgevent, 2, newfd.m_fd, int64_t);
+	GET_PARAM(pgevent, 3, newfd.m_proto, uint16_t);
+	newfd.m_type = SCAP_FD_IPV4_SOCK;
+	newfd.m_procinfo = procinfo;
+
+	// This can fail for socket types that we don't support, so we have the assertion
+	// to make sure that this is not a type of socket that we support.
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+
+	parse_packed_tuple(packed_data, &newconn.m_conntuple);
+
+	fdinfo = procinfo->add_fd(newfd);
+	if (fdinfo == NULL)
+	{
+		//
+		// The fd table is full
+		//
+		TRACE_DEBUG("fd table is full");
+		return;
+	}
+
+	newconn.set_time(pgevent->m_pevt->ts);
+	newconn.m_fdinfo = fdinfo;
+	fdinfo->add_connection(newconn);
+
+	if (!procinfo->m_printed_exec)
+			procinfo->print();
+
+	newconn.print();
 
 cleanup:
 	return;
@@ -272,32 +253,49 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
 	pid_t pid;
-	process *proc;
-	connection *conn;
+	process *procinfo;
+	filedescriptor *fdinfo;
+	connection *conninfo;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 	GET_PARAM(pgevent, 2, fd, int64_t);
 	GET_PARAM(pgevent, 3, pid, int64_t);
 
-	proc = m_inspector->get_process(pid, true);
-	if (proc == NULL)
+	procinfo = m_inspector->get_process(pid, true);
+	if (procinfo == NULL)
 	{
 		// FIXME: just print the connection
 		return;
 	}
 
-	conn = proc->get_connection(fd);
-	if (conn == NULL)
+	fdinfo = procinfo->get_fd(fd);
+	if (fdinfo == NULL)
 	{
-		// FIXME: add the connection?
 		return;
 	}
+	else
+	{
+		// FIXME: I'm taking the first connection in the FD.
+		// add the tuple information to the event and parse it.
+		auto it = fdinfo->m_conntable.begin();
+		if (it == fdinfo->m_conntable.end())
+		{
+			return;
+		}
 
-	// FIXME: make sanity checks on the connection tuple to make sure
-	// we're adding the result to the right connection.
-	// For example, what if we missed the close and new connect events?
-	if (res > 0)
-		conn->m_sent_bytes += res;
+		conninfo = &(it->second);
+		if (conninfo == NULL)
+		{
+			// FIXME: add the connection?
+			return;
+		}
+
+		// FIXME: make sanity checks on the connection tuple to make sure
+		// we're adding the result to the right connection.
+		// For example, what if we missed the close and new connect events?
+		if (res > 0)
+			conninfo->m_sent_bytes += res;
+	}
 
 cleanup:
 	return;
@@ -309,8 +307,9 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
 	pid_t pid;
-	process *proc;
-	connection *conn;
+	process *procinfo;
+	filedescriptor *fdinfo;
+	connection *conninfo;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X ||
@@ -326,25 +325,41 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 3, pid, int64_t);
 	}
 
-	proc = m_inspector->get_process(pid, true);
-	if (proc == NULL)
+	procinfo = m_inspector->get_process(pid, true);
+	if (procinfo == NULL)
 	{
 		// FIXME: just print the connection
 		return;
 	}
 
-	conn = proc->get_connection(fd);
-	if (conn == NULL)
+	fdinfo = procinfo->get_fd(fd);
+	if (fdinfo == NULL)
 	{
-		// FIXME: add the connection?
 		return;
 	}
+	else
+	{
+		// FIXME: I'm taking the first connection in the FD.
+		// add the tuple information to the event and parse it.
+		auto it = fdinfo->m_conntable.begin();
+		if (it == fdinfo->m_conntable.end())
+		{
+			return;
+		}
 
-	// FIXME: make sanity checks on the connection tuple to make sure
-	// we're adding the result to the right connection.
-	// For example, what if we missed the close and new connect events?
-	if (res > 0)
-		conn->m_recv_bytes += res;
+		conninfo = &(it->second);
+		if (conninfo == NULL)
+		{
+			// FIXME: add the connection?
+			return;
+		}
+
+		// FIXME: make sanity checks on the connection tuple to make sure
+		// we're adding the result to the right connection.
+		// For example, what if we missed the close and new connect events?
+		if (res > 0)
+			conninfo->m_recv_bytes += res;
+	}
 
 cleanup:
 	return;
@@ -414,7 +429,7 @@ void guardig_parser::parse_clone_exit(guardig_evt *pgevent)
 		newproc.m_args = parentproc->m_args;
 		newproc.m_cmdline = parentproc->m_cmdline;
 		newproc.m_cwd = parentproc->m_cwd;
-		newproc.m_conntable = parentproc->m_conntable;
+		newproc.m_fdtable = parentproc->m_fdtable;
 
 		switch(etype)
 		{
@@ -550,27 +565,27 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	int64_t fd, pid;
-	process *proc;
-	connection *conn;
+	process *procinfo;
+	filedescriptor *fdinfo;
 
 	GET_PARAM(pgevent, 0, fd, int64_t);
 	GET_PARAM(pgevent, 1, pid, int64_t);
 
-	proc = m_inspector->get_process(pid, false);
-	if (proc == NULL)
+	procinfo = m_inspector->get_process(pid, false);
+	if (procinfo == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
 		return;
 	}
 
-	conn = proc->get_connection(fd);
-	if (conn == NULL)
+	fdinfo = procinfo->get_fd(fd);
+	if (fdinfo == NULL)
 	{
 		//TRACE_DEBUG("couldn't find connection");
 		return;
 	}
 
-	conn->m_flags |= connection::FLAGS_CLOSE_IN_PROGRESS;
+	fdinfo->m_flags |= filedescriptor::FLAGS_CLOSE_IN_PROGRESS;
 
 cleanup:
 	return;
@@ -582,44 +597,49 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 	guardig_evt_param *parinfo;
 	int64_t retval;
 	int64_t fd, pid;
-	process *proc;
-	connection *conn;
+	process *procinfo;
+	filedescriptor *fdinfo;
 
 	GET_PARAM(pgevent, 2, fd, int64_t);
 	GET_PARAM(pgevent, 1, pid, int64_t);
 	GET_PARAM(pgevent, 0, retval, int64_t);
 
-	proc = m_inspector->get_process(pid, false);
-	if (proc == NULL)
+	procinfo = m_inspector->get_process(pid, false);
+	if (procinfo == NULL)
 	{
 		//TRACE_DEBUG("couldn't find process");
 		return;
 	}
 
-	conn = proc->get_connection(fd);
-	if (conn == NULL)
+	fdinfo = procinfo->get_fd(fd);
+	if (fdinfo == NULL)
 	{
 		//TRACE_DEBUG("couldn't find connection");
 		return;
 	}
 
-	if (conn->m_flags & connection::FLAGS_CLOSE_CANCELED)
+	if (fdinfo->m_flags & filedescriptor::FLAGS_CLOSE_CANCELED)
 	{
 		TRACE_DEBUG("*** canceled close exit ***");
-		conn->m_flags &= ~connection::FLAGS_CLOSE_CANCELED;
+		fdinfo->m_flags &= ~filedescriptor::FLAGS_CLOSE_CANCELED;
 		return;
 	}
 
-	if (retval == 0)
-	{
-		conn->print_volume();
-		conn->print_close(pgevent->m_pevt->ts);
-		proc->delete_connection(conn->m_fd);
-	}
-	else
+	if (retval != 0)
 	{
 		TRACE_DEBUG("close returned with: %ld", retval);
+		return;
 	}
+
+	for ( auto it = fdinfo->m_conntable.begin(); it != fdinfo->m_conntable.end(); ++it )
+	{
+		connection *conninfo = &(it->second);
+		conninfo->m_errorcode = retval;
+		conninfo->print_volume();
+		conninfo->print_close(pgevent->m_pevt->ts);
+	}
+
+	procinfo->delete_fd(fd);
 
 cleanup:
 	return;

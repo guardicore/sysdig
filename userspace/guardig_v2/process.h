@@ -16,19 +16,16 @@
 
 using namespace std;
 
-typedef unordered_map<int64_t, connection> connection_map_t;
-typedef connection_map_t::iterator connection_map_iterator_t;
-
 class process
 {
 
 public:
-	process() : m_conntable(MAX_CONN_TABLE_SIZE)
+	process() : m_fdtable(MAX_CONN_TABLE_SIZE)
 	{
 		init();
 	}
 
-	process(const char *name) : m_conntable(MAX_CONN_TABLE_SIZE)
+	process(const char *name) : m_fdtable(MAX_CONN_TABLE_SIZE)
 	{
 		init();
 		m_evt_name = name;
@@ -48,7 +45,6 @@ public:
 		m_uid = -1;
 		m_printed_exec = false;
 		m_had_connection = false;
-		m_is_fake = false;
 	}
 
 	void init(scap_threadinfo *pi)
@@ -65,7 +61,6 @@ public:
 		m_uid = pi->uid;
 		m_printed_exec = false;
 		m_had_connection = false;
-		m_is_fake = false;
 	}
 
 	void print();
@@ -73,9 +68,9 @@ public:
 	void set_args(const char* args, size_t len);
 	void set_cgroups(const char* cgroups, size_t len);
 
-	void add_connection(connection &conninfo);
-	connection *get_connection(int64_t fd);
-	void delete_connection(int64_t fd);
+	filedescriptor *add_fd(filedescriptor &fdinfo);
+	filedescriptor *get_fd(int64_t fd);
+	void delete_fd(int64_t fd);
 
 	string m_evt_name;
 	int64_t m_pid;
@@ -89,11 +84,10 @@ public:
 	uint32_t m_uid;
 	bool m_printed_exec;
 	bool m_had_connection;
-	bool m_is_fake;
 	vector<string> m_args;
 	vector<pair<string, string>> m_cgroups;
 
-	cache_map<int64_t, connection> m_conntable;
+	cache_map<int64_t, filedescriptor> m_fdtable;
 
 private:
 	void create_cgroups_str();

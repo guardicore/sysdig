@@ -18,6 +18,8 @@ along with sysdig.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
+#include <functional>
+
 /** @defgroup state State management 
  *  @{
  */
@@ -33,19 +35,33 @@ typedef union _ipv4tuple
 		uint32_t m_dip; ///< Destination (i.e. server) address.
 		uint16_t m_sport; ///< Source (i.e. client) port.
 		uint16_t m_dport; ///< Destination (i.e. server) port.
-		uint8_t m_l4proto; ///< Layer 4 protocol (e.g. TCP, UDP...).
-	}m_fields;
-	uint8_t m_all[13]; ///< The fields as a raw array ob bytes. Used for hasing.
-}ipv4tuple;
+	};
+	uint8_t m_all[12]; ///< The fields as a raw array ob bytes. Used for hashing.
+} ipv4tuple;
 
-/*!
-	\brief An IPv4 network.
-*/
-typedef struct ipv4net
+
+inline bool operator==(ipv4tuple a, ipv4tuple b)
 {
-	uint32_t m_ip; ///< IP addr
-	uint32_t m_netmask; ///< Subnet mask
-}ipv4net;
+	return (a.m_sip == b.m_sip &&
+			a.m_dip == b.m_dip &&
+			a.m_sport == b.m_sport &&
+			a.m_dport == b.m_dport);
+}
+
+
+struct ipv4tupleHash {
+	size_t operator()(const ipv4tuple &tuple) const
+	{
+		const unsigned char* p = reinterpret_cast<const unsigned char*>( &tuple );
+		size_t h = 2166136261;
+
+		for (unsigned int i = 0; i < sizeof(tuple); ++i)
+			h = (h * 16777619) ^ p[i];
+
+		return h;
+	}
+};
+
 
 /*!
 	\brief An IPv6 tuple. 
@@ -63,37 +79,5 @@ typedef union _ipv6tuple
 	uint8_t m_all[37]; ///< The fields as a raw array ob bytes. Used for hasing.
 } ipv6tuple;
 
-/*!
-	\brief An IPv4 server address. 
-*/
-typedef struct ipv4serverinfo
-{
-	uint32_t m_ip; ///< address
-	uint16_t m_port; ///< port
-	uint8_t m_l4proto; ///< IP protocol
-} ipv4serverinfo;
-
-/*!
-	\brief An IPv6 server address. 
-*/
-typedef struct ipv6serverinfo
-{
-	uint32_t m_ip[4];  ///< address
-	uint16_t m_port;  ///< port
-	uint8_t m_l4proto;  ///< IP protocol
-} ipv6serverinfo;
-
-/*!
-	\brief A unix socket tuple. 
-*/
-typedef union _unix_tuple
-{
-	struct
-	{
-		uint64_t m_source;  ///< source OS pointer.
-		uint64_t m_dest;  ///< destination OS pointer.
-	} m_fields;
-	uint8_t m_all[16]; ///< The fields as a raw array ob bytes. Used for hasing.
-} unix_tuple;
 
 /*@}*/

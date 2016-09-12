@@ -5,6 +5,7 @@
  *      Author: user
  */
 
+#include <sys/socket.h>
 #include "process.h"
 #include "settings.h"
 #include "trace.h"
@@ -124,21 +125,35 @@ void process::set_cgroups(const char* cgroups, size_t len)
 }
 
 
-void process::add_connection(connection &conninfo)
+filedescriptor *process::add_fd(filedescriptor &fdinfo)
 {
-	m_conntable.add(conninfo.m_fd, conninfo);
+	filedescriptor *existfd = m_fdtable.get(fdinfo.m_fd);
+
+	if (existfd != NULL &&
+			existfd->m_proto == SOCK_DGRAM &&
+		fdinfo.m_proto == SOCK_DGRAM &&
+		existfd->m_type == fdinfo.m_type)
+	{
+		//
+		// This is a UDP socket and there's already an existing fd, so we return
+		// it instead of adding the new fd to allow multiple connections on the same socket.
+		//
+		return existfd;
+	}
+
 	m_had_connection = true;
+	return m_fdtable.add(fdinfo.m_fd, fdinfo);
 }
 
 
-connection *process::get_connection(int64_t fd)
+filedescriptor *process::get_fd(int64_t fd)
 {
-	return m_conntable.get(fd);
+	return m_fdtable.get(fd);
 }
 
 
-void process::delete_connection(int64_t fd)
+void process::delete_fd(int64_t fd)
 {
-	m_conntable.remove(fd);
+	m_fdtable.remove(fd);
 }
 
