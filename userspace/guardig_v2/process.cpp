@@ -126,84 +126,19 @@ void process::set_cgroups(const char* cgroups, size_t len)
 
 void process::add_connection(connection &conninfo)
 {
-	auto it = m_conntable.find(conninfo.m_fd);
-
-	if(it == m_conntable.end())
-	{
-		if (m_conntable.size() >= MAX_CONN_TABLE_SIZE)
-		{
-			TRACE_DEBUG("fd table full");
-			return;
-		}
-
-		//threadinfo.compute_program_hash();
-
-		m_conntable.emplace(conninfo.m_fd, conninfo);
-	}
-	else
-	{
-		// FIXME: check for FLAGS_CLOSE_IN_PROGRESS
-		it->second = conninfo;
-	}
-
+	m_conntable.add(conninfo.m_fd, conninfo);
 	m_had_connection = true;
 }
 
 
 connection *process::get_connection(int64_t fd)
 {
-	connection_map_iterator_t it;
-	//
-	// Try looking up in our simple cache
-	//
-	if(m_last_accessed_fd != -1 && fd == m_last_accessed_fd)
-	{
-#ifdef GATHER_INTERNAL_STATS
-		g_stats.m_n_cached_fd_lookups++;
-#endif
-		return m_last_accessed_conninfo;
-	}
-
-	it = m_conntable.find(fd);
-	if (it != m_conntable.end())
-	{
-#ifdef GATHER_INTERNAL_STATS
-		g_stats.m_n_noncached_fd_lookups++;
-#endif
-		m_last_accessed_fd = fd;
-		m_last_accessed_conninfo = &(it->second);
-		return &(it->second);
-	}
-	else
-	{
-		return NULL;
-	}
+	return m_conntable.get(fd);
 }
 
 
 void process::delete_connection(int64_t fd)
 {
-	connection_map_iterator_t it;
-
-	if(fd == m_last_accessed_fd)
-	{
-		m_last_accessed_fd = -1;
-	}
-
-	it = m_conntable.find(fd);
-	if (it != m_conntable.end())
-	{
-		m_conntable.erase(it);
-	}
-	else
-	{
-		return;
-	}
-}
-
-
-void process::reset_cache()
-{
-	m_last_accessed_fd = -1;
+	m_conntable.remove(fd);
 }
 

@@ -6,12 +6,9 @@
 #include "scap.h"
 #include "settings.h"
 #include "process.h"
+#include "cache_map.h"
 
 using namespace std;
-
-typedef unordered_map<int64_t, process> process_map_t;
-typedef process_map_t::iterator process_map_iterator_t;
-
 
 class stats {
 public:
@@ -26,13 +23,9 @@ class guardig {
 
 public:
 
-	guardig()
+	guardig() : m_proctable(MAX_PROC_TABLE_SIZE)
 	{
-		m_max_conntable_size = MAX_CONN_TABLE_SIZE;
-		m_max_proc_table_size = MAX_PROC_TABLE_SIZE;
 		m_capture = NULL;
-		m_last_procinfo = NULL;
-		m_last_pid = 0;
 	}
 
 	process *find_process(int64_t pid);
@@ -40,13 +33,7 @@ public:
 	void delete_process(int64_t pid);
 	void add_process(process &proc);
 
-	uint32_t m_max_conntable_size;
-	uint32_t m_max_proc_table_size;
-
-	process_map_t m_proctable;
-	int64_t m_last_pid;
-	process *m_last_procinfo;
-
+	cache_map<int64_t, process> m_proctable;
 	scap_t *m_capture;
 };
 

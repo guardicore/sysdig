@@ -10,8 +10,9 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
+#include "cache_map.h"
 #include "connection.h"
+#include "settings.h"
 
 using namespace std;
 
@@ -22,12 +23,12 @@ class process
 {
 
 public:
-	process()
+	process() : m_conntable(MAX_CONN_TABLE_SIZE)
 	{
 		init();
 	}
 
-	process(const char *name)
+	process(const char *name) : m_conntable(MAX_CONN_TABLE_SIZE)
 	{
 		init();
 		m_evt_name = name;
@@ -47,8 +48,6 @@ public:
 		m_uid = -1;
 		m_printed_exec = false;
 		m_had_connection = false;
-		m_last_accessed_conninfo = NULL;
-		m_last_accessed_fd = -1;
 	}
 
 	void init(scap_threadinfo *pi)
@@ -65,8 +64,6 @@ public:
 		m_uid = pi->uid;
 		m_printed_exec = false;
 		m_had_connection = false;
-		m_last_accessed_conninfo = NULL;
-		m_last_accessed_fd = -1;
 	}
 
 	void print();
@@ -77,7 +74,6 @@ public:
 	void add_connection(connection &conninfo);
 	connection *get_connection(int64_t fd);
 	void delete_connection(int64_t fd);
-	void reset_cache();
 
 	string m_evt_name;
 	int64_t m_pid;
@@ -94,12 +90,7 @@ public:
 	vector<string> m_args;
 	vector<pair<string, string>> m_cgroups;
 
-	connection_map_t m_conntable;
-	//
-	// Simple connection cache
-	//
-	int64_t m_last_accessed_fd;
-	connection *m_last_accessed_conninfo;
+	cache_map<int64_t, connection> m_conntable;
 
 private:
 	void create_cgroups_str();

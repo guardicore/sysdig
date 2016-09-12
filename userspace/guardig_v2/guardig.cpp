@@ -107,47 +107,13 @@ uint32_t interesting_events[] =
 
 void guardig::add_process(process &procinfo) //, bool from_scap_proctable)
 {
-	if (m_proctable.size() >= m_max_proc_table_size)
-	{
-		TRACE_DEBUG("thread table full");
-		return;
-	}
-
-	//threadinfo.compute_program_hash();
-
-	m_proctable[procinfo.m_pid] = procinfo;
+	m_proctable.add(procinfo.m_pid, procinfo);
 }
 
 
 process *guardig::find_process(int64_t pid)
 {
-	process_map_iterator_t it;
-
-	//
-	// Try looking up in our simple cache
-	//
-	if(m_last_pid && pid == m_last_pid)
-	{
-#ifdef GATHER_INTERNAL_STATS
-		g_stats.m_n_cached_proc_lookups++;
-#endif
-		return m_last_procinfo;
-	}
-
-	it = m_proctable.find(pid);
-	if (it != m_proctable.end())
-	{
-#ifdef GATHER_INTERNAL_STATS
-		g_stats.m_n_noncached_proc_lookups++;
-#endif
-		m_last_pid = pid;
-		m_last_procinfo = &(it->second);
-		return &(it->second);
-	}
-	else
-	{
-		return NULL;
-	}
+	return m_proctable.get(pid);
 }
 
 
@@ -185,21 +151,7 @@ process *guardig::get_process(int64_t pid, bool query_os)
 
 void guardig::delete_process(int64_t pid)
 {
-	process_map_iterator_t it;
-
-	// Reset the cache if necessary
-	if (m_last_pid == pid)
-		m_last_pid = 0;
-
-	it = m_proctable.find(pid);
-	if (it != m_proctable.end())
-	{
-		m_proctable.erase(it);
-	}
-	else
-	{
-		return;
-	}
+	m_proctable.remove(pid);
 }
 
 
