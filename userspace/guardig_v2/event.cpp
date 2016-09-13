@@ -9,8 +9,8 @@ guardig_evt_param *guardig_evt::get_param(uint32_t id)
 		m_flags |= (uint32_t)guardig_evt::SINSP_EF_PARAMS_LOADED;
 	}
 
-	if (id < m_params.size())
-		return &(m_params[id]);
+	if (id < PPM_MAX_EVENT_PARAMS)
+		return &m_params[id];
 	else
 		return NULL;
 }

@@ -6,6 +6,7 @@
 #include <vector>
 #include "scap.h"
 #include "../../driver/ppm_events_public.h"
+#include "defs.h"
 using namespace std;
 
 extern struct guardig_evttables g_infotables;
@@ -49,14 +50,12 @@ public:
 	scap_evt *m_pevt;
 	uint16_t m_cpuid;
 	uint64_t m_evtnum;
-	//guardig_threadinfo *m_tinfo;
-	//guardig_fdinfo_t *m_fdinfo;
 	const struct ppm_event_info *m_info;
 	const struct ppm_event_info *m_event_info_table;
 	int32_t m_errorcode;
 
 private:
-	vector<guardig_evt_param> m_params;
+	guardig_evt_param m_params[PPM_MAX_EVENT_PARAMS];
 	uint32_t m_flags;
 
 public:
@@ -93,8 +92,6 @@ public:
 	{
 		m_flags = EF_NONE;
 		m_info = &(m_event_info_table[m_pevt->type]);
-		//m_tinfo = NULL;
-		//m_fdinfo = NULL;
 		m_evtnum = 0;
 		m_errorcode = 0;
 	}
@@ -105,8 +102,6 @@ public:
 		m_pevt = (scap_evt *)evdata;
 		m_info = &(m_event_info_table[m_pevt->type]);
 		m_cpuid = cpuid;
-		//m_tinfo = NULL;
-		//m_fdinfo = NULL;
 		m_evtnum = 0;
 		m_errorcode = 0;
 	}
@@ -117,17 +112,20 @@ private:
 	{
 		uint32_t j;
 		uint32_t nparams;
-		guardig_evt_param par;
 
 		nparams = m_event_info_table[m_pevt->type].nparams;
 		uint16_t *lens = (uint16_t *)((char *)m_pevt + sizeof(struct ppm_evt_hdr));
 		char *valptr = (char *)lens + nparams * sizeof(uint16_t);
-		m_params.clear();
+
+		if (nparams > PPM_MAX_EVENT_PARAMS)
+		{
+			ASSERT(false);
+			nparams = PPM_MAX_EVENT_PARAMS;
+		}
 
 		for(j = 0; j < nparams; j++)
 		{
-			par.init(valptr, lens[j]);
-			m_params.push_back(par);
+			m_params[j].init(valptr, lens[j]);
 			valptr += lens[j];
 		}
 	}
