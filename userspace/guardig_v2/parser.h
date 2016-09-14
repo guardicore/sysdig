@@ -42,15 +42,7 @@ private:
 
 	bool reset(guardig_evt *evt);
 
-	//bool set_ipv4_addresses_and_ports(guardig_fdinfo_t* fdinfo, uint8_t* packed_data);
-	//inline void add_socket(guardig_evt *evt, int64_t fd, uint32_t domain, uint32_t type, uint32_t protocol);
-	//void erase_fd(erase_fd_params* params);
-
-	//bool retrieve_enter_event(guardig_evt* enter_evt, guardig_evt* exit_evt);
-
-	//inline void store_event(guardig_evt* evt);
-
-	//uint8_t* reserve_event_buffer();
+	void add_connection_from_event(process *procinfo, guardig_evt *pgevent);
 
 	//void parse_socket_exit(guardig_evt *pgevent);
 	//void parse_bind_exit(guardig_evt *pgevent);

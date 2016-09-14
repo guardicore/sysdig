@@ -82,6 +82,91 @@ bool parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 }
 
 
+void guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	uint8_t* packed_data;
+	int64_t fd, res;
+	uint16_t proto;
+	filedescriptor *fdinfo;
+	filedescriptor newfd;
+	connection newconn;
+
+	switch (pgevent->m_pevt->type)
+	{
+	case PPME_SOCKET_ACCEPT4_5_X:
+	case PPME_SOCKET_ACCEPT_5_X:
+		newconn.m_evt_name = "accept";
+		GET_PARAM(pgevent, 0, fd, int64_t);
+		GET_PARAM(pgevent, 5, proto, uint16_t);
+		GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+		res = fd;
+		break;
+	case PPME_SOCKET_CONNECT_X:
+		newconn.m_evt_name = "connect";
+		GET_PARAM(pgevent, 2, fd, int64_t);
+		GET_PARAM(pgevent, 3, proto, uint16_t);
+		GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+		GET_PARAM(pgevent, 0, res, uint64_t);
+		break;
+	case PPME_SOCKET_RECVFROM_X:
+		newconn.m_evt_name = "recvfrom";
+		GET_PARAM(pgevent, 3, fd, int64_t);
+		GET_PARAM(pgevent, 5, proto, uint16_t);
+		GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
+		GET_PARAM(pgevent, 0, res, int64_t);
+		break;
+	case PPME_SOCKET_SENDTO_X:
+		newconn.m_evt_name = "sendto";
+		GET_PARAM(pgevent, 3, fd, int64_t);
+		GET_PARAM(pgevent, 5, proto, uint16_t);
+		GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
+		GET_PARAM(pgevent, 0, res, int64_t);
+		break;
+	default:
+		ASSERT(false);
+		break;
+	}
+
+	newfd.m_fd = fd;
+	newfd.m_type = SCAP_FD_IPV4_SOCK;
+	newfd.m_proto = proto;
+	newfd.m_procinfo = procinfo;
+
+	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
+		return;
+
+	//
+	// Update addresses if one of then was empty
+	//
+	m_inspector->m_network_interfaces.update_tuple(&newconn.m_conntuple);
+
+	fdinfo = procinfo->add_fd(newfd);
+	if (fdinfo == NULL)
+	{
+		TRACE_DEBUG("fd table is full");
+		return;
+	}
+
+	if (fdinfo->get_connection(newconn.m_conntuple) == NULL)
+	{
+		newconn.set_time(pgevent->m_pevt->ts);
+		newconn.m_errorcode = res;
+		newconn.m_fdinfo = fdinfo;
+
+		fdinfo->add_connection(newconn);
+
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
+
+		newconn.print();
+	}
+
+cleanup:
+	return;
+}
+
+
 void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
@@ -113,9 +198,6 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
-		//
-		// The process table is full
-		//
 		TRACE_DEBUG("process table is full");
 		return;
 	}
@@ -132,39 +214,7 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 10, procinfo->m_uid, uint32_t);
 	}
 
-	newfd.m_fd = fd;
-	newfd.m_type = SCAP_FD_IPV4_SOCK;
-	newfd.m_proto = SOCK_STREAM;
-	newfd.m_procinfo = procinfo;
-
-	// Extract the address
-	// This might not work for socket types that we don't support, so we have the assertion
-	// to make sure that this is not a type of socket that we support.
-	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-
-	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
-		return;
-
-	fdinfo = procinfo->add_fd(newfd);
-	if (fdinfo == NULL)
-	{
-		//
-		// The fd table is full
-		//
-		TRACE_DEBUG("fd table is full");
-		return;
-	}
-
-	newconn.set_time(pgevent->m_pevt->ts);
-	newconn.m_errorcode = 0;
-	newconn.m_fdinfo = fdinfo;
-
-	fdinfo->add_connection(newconn);
-
-	if (!procinfo->m_printed_exec)
-		procinfo->print();
-
-	newconn.print();
+	add_connection_from_event(procinfo, pgevent);
 
 cleanup:
 	return;
@@ -216,36 +266,7 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 8, procinfo->m_uid, uint32_t);
 	}
 
-	GET_PARAM(pgevent, 2, newfd.m_fd, int64_t);
-	GET_PARAM(pgevent, 3, newfd.m_proto, uint16_t);
-	newfd.m_type = SCAP_FD_IPV4_SOCK;
-	newfd.m_procinfo = procinfo;
-
-	// This can fail for socket types that we don't support, so we have the assertion
-	// to make sure that this is not a type of socket that we support.
-	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-
-	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
-		return;
-
-	fdinfo = procinfo->add_fd(newfd);
-	if (fdinfo == NULL)
-	{
-		//
-		// The fd table is full
-		//
-		TRACE_DEBUG("fd table is full");
-		return;
-	}
-
-	newconn.set_time(pgevent->m_pevt->ts);
-	newconn.m_fdinfo = fdinfo;
-	fdinfo->add_connection(newconn);
-
-	if (!procinfo->m_printed_exec)
-			procinfo->print();
-
-	newconn.print();
+	add_connection_from_event(procinfo, pgevent);
 
 cleanup:
 	return;
@@ -262,6 +283,14 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	connection *conninfo;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
+
+	if (res < 0)
+	{
+		//
+		// We don't report failed UDP connections.
+		//
+		return;
+	}
 
 	switch(pgevent->m_pevt->type)
 	{
@@ -285,8 +314,24 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
-		// FIXME: just print the connection
+		TRACE_DEBUG("process table is full");
 		return;
+	}
+
+	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X)
+	{
+		parinfo = pgevent->get_param(2);
+		if (parinfo != NULL &&
+			parinfo->m_len != 0)
+		{
+			add_connection_from_event(procinfo, pgevent);
+		}
+		else
+		{
+			//
+			// The connection tuple is empty, this is probably just a regular send
+			//
+		}
 	}
 
 	fdinfo = procinfo->get_fd(fd);
@@ -337,7 +382,8 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 	if (res < 0)
 	{
 		//
-		// The kernel module will not pass us all the parameters in this case,
+		// We don't report failed UDP connections.
+		// Also, the kernel module will not pass us all the parameters in this case,
 		// just continue.
 		//
 		return;
@@ -392,41 +438,7 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		if (parinfo != NULL &&
 			parinfo->m_len != 0)
 		{
-			uint8_t *packed_data;
-			filedescriptor newfd;
-			connection newconn("recvfrom");
-
-			packed_data = (uint8_t *)parinfo->m_val;
-
-			GET_PARAM(pgevent, 5, newfd.m_proto, uint16_t);
-			newfd.m_fd = fd;
-			newfd.m_type = SCAP_FD_IPV4_SOCK;
-			newfd.m_procinfo = procinfo;
-
-			if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
-				return;
-
-			m_inspector->m_network_interfaces.update_tuple(&newconn.m_conntuple);
-
-			fdinfo = procinfo->add_fd(newfd);
-			if (fdinfo == NULL)
-			{
-				TRACE_DEBUG("fd table is full");
-				return;
-			}
-
-			if (fdinfo->get_connection(newconn.m_conntuple) == NULL)
-			{
-				newconn.set_time(pgevent->m_pevt->ts);
-				newconn.m_errorcode = res;
-				newconn.m_fdinfo = fdinfo;
-				fdinfo->add_connection(newconn);
-
-				if (!procinfo->m_printed_exec)
-					procinfo->print();
-
-				newconn.print();
-			}
+			add_connection_from_event(procinfo, pgevent);
 		}
 		else
 		{
