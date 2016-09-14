@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "process.h"
 #include "cache_map.h"
+#include "ifinfo.h"
 
 using namespace std;
 
@@ -34,6 +35,7 @@ public:
 	void add_process(process &proc);
 
 	cache_map<int64_t, process> m_proctable;
+	sinsp_network_interfaces m_network_interfaces;
 	scap_t *m_capture;
 };
 

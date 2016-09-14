@@ -34,7 +34,7 @@
 	} while(0)
 
 
-void parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
+bool parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 {
 	// Validate the family
 	uint8_t family = *packed_data;
@@ -62,12 +62,12 @@ void parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 		else
 		{
 			TRACE_DEBUG("ipv6 is not supported yet");
-			return;
+			return false;
 		}
 	}
 	else if (family == PPM_AF_UNIX)
 	{
-		return;
+		return false;
 	}
 	else
 	{
@@ -75,8 +75,10 @@ void parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 		// causes a connect with the wrong socket type to fail.
 		// Assert in debug mode and just keep going in release mode.
 		ASSERT(false);
-		return;
+		return false;
 	}
+
+	return true;
 }
 
 
@@ -140,7 +142,8 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 	// to make sure that this is not a type of socket that we support.
 	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
 
-	parse_packed_tuple(packed_data, &newconn.m_conntuple);
+	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
+		return;
 
 	fdinfo = procinfo->add_fd(newfd);
 	if (fdinfo == NULL)
@@ -222,7 +225,8 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 	// to make sure that this is not a type of socket that we support.
 	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
 
-	parse_packed_tuple(packed_data, &newconn.m_conntuple);
+	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
+		return;
 
 	fdinfo = procinfo->add_fd(newfd);
 	if (fdinfo == NULL)
@@ -258,8 +262,25 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	connection *conninfo;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
-	GET_PARAM(pgevent, 2, fd, int64_t);
-	GET_PARAM(pgevent, 3, pid, int64_t);
+
+	switch(pgevent->m_pevt->type)
+	{
+	case PPME_SOCKET_SENDTO_X:
+		GET_PARAM(pgevent, 3, fd, int64_t);
+		GET_PARAM(pgevent, 4, pid, int64_t);
+		break;
+	case PPME_SYSCALL_PWRITE_X:
+	case PPME_SYSCALL_WRITE_X:
+	case PPME_SYSCALL_WRITEV_X:
+	case PPME_SYSCALL_PWRITEV_X:
+	case PPME_SOCKET_SEND_X:
+		GET_PARAM(pgevent, 2, fd, int64_t);
+		GET_PARAM(pgevent, 3, pid, int64_t);
+		break;
+	default:
+		ASSERT(false);
+		return;
+	}
 
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
@@ -306,38 +327,127 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	int64_t fd, res;
-	pid_t pid;
+	int64_t pid;
 	process *procinfo;
 	filedescriptor *fdinfo;
 	connection *conninfo;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
-	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X ||
-			pgevent->m_pevt->type == PPME_SYSCALL_READV_X ||
-			pgevent->m_pevt->type == PPME_SYSCALL_PREADV_X)
+
+	if (res < 0)
 	{
+		//
+		// The kernel module will not pass us all the parameters in this case,
+		// just continue.
+		//
+		return;
+	}
+
+	switch(pgevent->m_pevt->type)
+	{
+	case PPME_SOCKET_RECVFROM_X:
+	case PPME_SYSCALL_READV_X:
+	case PPME_SYSCALL_PREADV_X:
 		GET_PARAM(pgevent, 3, fd, int64_t);
 		GET_PARAM(pgevent, 4, pid, int64_t);
-	}
-	else
-	{
+		break;
+	case PPME_SOCKET_RECV_X:
+	case PPME_SYSCALL_READ_X:
 		GET_PARAM(pgevent, 2, fd, int64_t);
 		GET_PARAM(pgevent, 3, pid, int64_t);
+		break;
+	default:
+		ASSERT(false);
+		return;
 	}
 
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
-		// FIXME: just print the connection
+		//
+		// Process table is full
+		//
+		ASSERT(false);
 		return;
+	}
+
+	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X &&
+		procinfo->m_uid == -1)
+	{
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		// Note: ATM I'm only supporting recv_from, because in other events I should've
+		// seen the connection before with connect / accept.
+		//
+		GET_PARAM_BUFFER(pgevent, 6, procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 7, procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 8, procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 9, procinfo->m_uid, uint32_t);
+	}
+
+	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
+	{
+		parinfo = pgevent->get_param(2);
+		if (parinfo != NULL &&
+			parinfo->m_len != 0)
+		{
+			uint8_t *packed_data;
+			filedescriptor newfd;
+			connection newconn("recvfrom");
+
+			packed_data = (uint8_t *)parinfo->m_val;
+
+			GET_PARAM(pgevent, 5, newfd.m_proto, uint16_t);
+			newfd.m_fd = fd;
+			newfd.m_type = SCAP_FD_IPV4_SOCK;
+			newfd.m_procinfo = procinfo;
+
+			if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
+				return;
+
+			m_inspector->m_network_interfaces.update_tuple(&newconn.m_conntuple);
+
+			fdinfo = procinfo->add_fd(newfd);
+			if (fdinfo == NULL)
+			{
+				TRACE_DEBUG("fd table is full");
+				return;
+			}
+
+			if (fdinfo->get_connection(newconn.m_conntuple) == NULL)
+			{
+				newconn.set_time(pgevent->m_pevt->ts);
+				newconn.m_errorcode = res;
+				newconn.m_fdinfo = fdinfo;
+				fdinfo->add_connection(newconn);
+
+				if (!procinfo->m_printed_exec)
+					procinfo->print();
+
+				newconn.print();
+			}
+		}
+		else
+		{
+			//
+			// The connection tuple is empty, this is probably just a regular recv
+			//
+		}
 	}
 
 	fdinfo = procinfo->get_fd(fd);
 	if (fdinfo == NULL)
 	{
+		//
+		// can't find FD, should happen only if we missed the connect / accept event.
+		//
+		// ASSERT(false);
 		return;
 	}
-	else
+
+	// This is a hack to fix a compilation error.
+	if (true)
 	{
 		// FIXME: I'm taking the first connection in the FD.
 		// add the tuple information to the event and parse it.
@@ -357,8 +467,7 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		// FIXME: make sanity checks on the connection tuple to make sure
 		// we're adding the result to the right connection.
 		// For example, what if we missed the close and new connect events?
-		if (res > 0)
-			conninfo->m_recv_bytes += res;
+		conninfo->m_recv_bytes += res;
 	}
 
 cleanup:

@@ -75,6 +75,7 @@ static int f_sys_accept_x(struct event_filler_arguments *args);
 static int f_sys_send_e(struct event_filler_arguments *args);
 static int f_sys_send_x(struct event_filler_arguments *args);
 static int f_sys_sendto_e(struct event_filler_arguments *args);
+static int f_sys_sendto_x(struct event_filler_arguments *args);
 static int f_sys_sendmsg_e(struct event_filler_arguments *args);
 static int f_sys_sendmsg_x(struct event_filler_arguments *args);
 static int f_sys_sendmmsg_e(struct event_filler_arguments *args);
@@ -183,7 +184,7 @@ const struct ppm_event_entry g_ppm_events[PPM_EVENT_MAX] = {
 	[PPME_SOCKET_SEND_E] = {f_sys_send_e},
 	[PPME_SOCKET_SEND_X] = {f_sys_send_x},
 	[PPME_SOCKET_SENDTO_E] = {f_sys_sendto_e},
-	[PPME_SOCKET_SENDTO_X] = {f_sys_send_x},
+	[PPME_SOCKET_SENDTO_X] = {f_sys_sendto_x},
 	[PPME_SOCKET_SENDMSG_E] = {f_sys_sendmsg_e},
 	[PPME_SOCKET_SENDMSG_X] = {f_sys_sendmsg_x},
     [PPME_SOCKET_SENDMMSG_E] = {f_sys_sendmmsg_e},
@@ -1649,6 +1650,7 @@ static int f_sys_connect_x(struct event_filler_arguments *args)
 
 	if (current->parent != NULL)
 	{
+		// FIXME: am I allowed to touch current->parent without locking?
 		parent_tgid = current->parent->tgid;
 		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
 		parent_comm[sizeof(parent_comm) - 1] = '\0';
@@ -2010,6 +2012,178 @@ static int f_sys_sendto_e(struct event_filler_arguments *args)
 	return add_sentinel(args);
 }
 
+
+static int f_sys_sendto_x(struct event_filler_arguments *args)
+{
+	unsigned long val;
+	int res;
+	int64_t retval;
+	unsigned long bufsize;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
+	struct sockaddr __user *usrsockaddr;
+	struct sockaddr_storage address;
+	int err = 0;
+	pid_t parent_tgid = -1;
+	char parent_comm[TASK_COMM_LEN] = "unknown";
+	struct socket *sock;
+	short type = 0;
+
+	/*
+	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
+	 */
+	if (!args->is_socketcall)
+		syscall_get_arguments(current, args->regs, 0, 1, &val);
+	else
+		val = args->socketcall_args[0];
+
+	args->fd = (int)val;
+
+	/*
+	 * res
+	 */
+	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
+	res = val_to_ring(args, retval, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/*
+	 * data
+	 */
+	if (retval < 0) {
+		/*
+		 * The operation failed, return an empty buffer
+		 */
+		val = 0;
+		bufsize = 0;
+	} else {
+		if (!args->is_socketcall)
+			syscall_get_arguments(current, args->regs, 1, 1, &val);
+		else
+			val = args->socketcall_args[1];
+
+		/*
+		 * The return value can be lower than the value provided by the user,
+		 * and we take that into account.
+		 */
+		bufsize = retval;
+	}
+
+	args->enforce_snaplen = true;
+	res = val_to_ring(args, val, bufsize, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/*******************************/
+
+	*targetbuf = 250;
+
+	/*
+	 * Get the address
+	 */
+	if (!args->is_socketcall)
+		syscall_get_arguments(current, args->regs, 4, 1, &val);
+	else
+		val = args->socketcall_args[4];
+
+	usrsockaddr = (struct sockaddr __user *)val;
+
+	/*
+	 * Get the address len
+	 */
+	if (!args->is_socketcall)
+		syscall_get_arguments(current, args->regs, 5, 1, &val);
+	else
+		val = args->socketcall_args[5];
+
+	if (usrsockaddr != NULL && val != 0) {
+		/*
+		 * Copy the address
+		 */
+		err = addr_to_kernel(usrsockaddr, val, (struct sockaddr *)&address);
+		if (likely(err >= 0)) {
+			/*
+			 * Convert the fd into socket endpoint information
+			 */
+			size = fd_to_socktuple(args->fd,
+				(struct sockaddr *)&address,
+				val,
+				true,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
+		}
+	}
+
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+			    (uint64_t)(unsigned long)targetbuf,
+			    size,
+			    false,
+			    0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/*
+	 * Get the socket from the fd
+	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
+	 */
+	sock = sockfd_lookup(args->fd, &err);
+
+	if (likely(sock))
+	{
+		type = sock->type;
+		sockfd_put(sock);
+	}
+
+	res = val_to_ring(args, args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_INT16 */
+	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	if (current->parent != NULL)
+	{
+		// FIXME: am I allowed to touch current->parent without locking?
+		parent_tgid = current->parent->tgid;
+		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
+		parent_comm[sizeof(parent_comm) - 1] = '\0';
+	}
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UID */
+	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	return add_sentinel(args);
+}
+
+
 static int f_sys_send_x(struct event_filler_arguments *args)
 {
 	unsigned long val;
@@ -2214,6 +2388,10 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	struct sockaddr_storage address;
 	int addrlen;
 	int err = 0;
+	pid_t parent_tgid = -1;
+	char parent_comm[TASK_COMM_LEN] = "unknown";
+	struct socket *sock;
+	short type = 0;
 
 	/*
 	 * Push the common params to the ring
@@ -2222,16 +2400,16 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	if (retval >= 0) {
-		/*
-		 * Get the fd
-		 */
-		if (!args->is_socketcall) {
-			syscall_get_arguments(current, args->regs, 0, 1, &val);
-			fd = (int)val;
-		} else
-			fd = (int)args->socketcall_args[0];
+	/*
+	 * Get the fd
+	 */
+	if (!args->is_socketcall) {
+		syscall_get_arguments(current, args->regs, 0, 1, &val);
+		fd = (int)val;
+	} else
+		fd = (int)args->socketcall_args[0];
 
+	if (retval >= 0) {
 		/*
 		 * Get the address
 		 */
@@ -2291,12 +2469,58 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
+	/*
+	 * Get the socket from the fd
+	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
+	 */
+	sock = sockfd_lookup(fd, &err);
+
+	if (likely(sock))
+	{
+		type = sock->type;
+		sockfd_put(sock);
+	}
+
 	res = val_to_ring(args, fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	res = val_to_ring(args, current->tgid, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_INT16 */
+	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	if (current->parent != NULL)
+	{
+		// FIXME: am I allowed to touch current->parent without locking?
+		parent_tgid = current->parent->tgid;
+		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
+		parent_comm[sizeof(parent_comm) - 1] = '\0';
+	}
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UID */
+	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
+	if (res != PPM_SUCCESS)
 		return res;
 
 	return add_sentinel(args);

@@ -255,6 +255,8 @@ int32_t main()
 
 	init_event_mask(capture);
 	init_info_tables();
+	inspector.m_network_interfaces.import_interfaces(scap_get_ifaddr_list(capture));
+
 	// FIXME: this is hacky, fix it.
 	gevent.m_event_info_table = g_infotables.m_event_info;
 	parser.m_tmp_evt.m_event_info_table = g_infotables.m_event_info;
