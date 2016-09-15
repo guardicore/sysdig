@@ -143,7 +143,32 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 	//
 	m_inspector->m_network_interfaces.update_tuple(&newconn.m_conntuple);
 
-	fdinfo = procinfo->add_fd(newfd);
+	fdinfo = procinfo->get_fd(fd);
+
+	if (fdinfo == NULL ||
+			fdinfo->m_proto == SOCK_STREAM ||
+			fdinfo->m_proto != newfd.m_proto)
+	{
+		if (fdinfo != NULL)
+		{
+			//
+			// There's an existing FD that wasn't closed (we probably missed the close
+			// event). Print its connections and replace it by the new FD.
+			//
+			for ( auto connit = fdinfo->m_conntable.begin(); connit != fdinfo->m_conntable.end(); ++connit )
+			{
+				connection *conninfo = &(connit->second);
+#ifdef PRINT_REPORTS
+				conninfo->print_volume();
+				conninfo->print_close(pgevent->m_pevt->ts);
+#endif
+			}
+
+		}
+
+		fdinfo = procinfo->add_fd(newfd);
+	}
+
 	if (fdinfo == NULL)
 	{
 		TRACE_DEBUG("fd table is full");
@@ -637,6 +662,19 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 		return;
 	}
 
+	for ( auto fdit = procinfo->m_fdtable.begin(); fdit != procinfo->m_fdtable.end(); ++fdit )
+	{
+		filedescriptor *fdinfo = &(fdit->second);
+		for ( auto connit = fdinfo->m_conntable.begin(); connit != fdinfo->m_conntable.end(); ++connit )
+		{
+			connection *conninfo = &(connit->second);
+#ifdef PRINT_REPORTS
+			conninfo->print_volume();
+			conninfo->print_close(pgevent->m_pevt->ts);
+#endif
+		}
+	}
+
 	if (procinfo->m_had_connection)
 	{
 #ifdef PRINT_REPORTS
@@ -724,7 +762,6 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 	for ( auto it = fdinfo->m_conntable.begin(); it != fdinfo->m_conntable.end(); ++it )
 	{
 		connection *conninfo = &(it->second);
-		conninfo->m_errorcode = retval;
 #ifdef PRINT_REPORTS
 		conninfo->print_volume();
 		conninfo->print_close(pgevent->m_pevt->ts);

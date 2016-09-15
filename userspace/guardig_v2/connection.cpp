@@ -75,6 +75,7 @@ void connection::print_close(uint64_t ts)
 {
 	set_time(ts);
 	m_evt_name = "close";
+	m_errorcode = 0;
 
 	print();
 }

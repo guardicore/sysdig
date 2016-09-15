@@ -127,20 +127,6 @@ void process::set_cgroups(const char* cgroups, size_t len)
 
 filedescriptor *process::add_fd(filedescriptor &fdinfo)
 {
-	filedescriptor *existfd = m_fdtable.get(fdinfo.m_fd);
-
-	if (existfd != NULL &&
-			existfd->m_proto == SOCK_DGRAM &&
-		fdinfo.m_proto == SOCK_DGRAM &&
-		existfd->m_type == fdinfo.m_type)
-	{
-		//
-		// This is a UDP socket and there's already an existing fd, so we return
-		// it instead of adding the new fd to allow multiple connections on the same socket.
-		//
-		return existfd;
-	}
-
 	m_had_connection = true;
 	return m_fdtable.add(fdinfo.m_fd, fdinfo);
 }
