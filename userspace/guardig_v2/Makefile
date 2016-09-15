@@ -8,14 +8,17 @@ ZLIB_PATH = ../../zlib-prefix/src/zlib
 FLAGS = -g -std=c++11
 DEFINE = -D_DEBUG -DGATHER_INTERNAL_STATS
 
-all: guardig
+all: guardig guardig_no_prints
 	@echo done
 
 guardig:
-	g++ ${FLAGS} ${INCLUDE} ${DEFINE} ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o guardig 
+	g++ ${FLAGS} ${INCLUDE} ${DEFINE} -DPRINT_REPORTS ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o $@ 
+
+guardig_no_prints:
+	g++ ${FLAGS} ${INCLUDE} ${DEFINE} ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o $@
 
 #guardig.o: guardig.c
 #g++ -c -I${INCLUDE} ${SRC_PATH}/$< -o $@
 
 clean:
-	rm guardig
+	rm guardig guardig_no_prints

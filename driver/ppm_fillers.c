@@ -2163,6 +2163,13 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 			/*
 			 * Convert the fd into socket endpoint information
 			 */
+
+			//
+			// FIXME: We should decide if the socket is connected in a better way.
+			// For example, if there is a connected TCP connection and someone is calling
+			// sendto with a none-NULL dest address, the sendto system actually ignores the dest address,
+			// but we won't
+			//
 			is_connected = 0;
 			size = fd_to_socktuple(args->fd,
 				(struct sockaddr *)&address,
@@ -2571,6 +2578,13 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 				/*
 				 * Convert the fd into socket endpoint information
 				 */
+
+				//
+				// FIXME: We should decide if the socket is connected in a better way.
+				// For example, if there is a connected TCP connection and someone is calling
+				// sendto with a none-NULL dest address, the sendto system actually ignores the dest address,
+				// but we won't
+				//
 				is_connected = 0;
 				size = fd_to_socktuple(fd,
 					(struct sockaddr *)&address,

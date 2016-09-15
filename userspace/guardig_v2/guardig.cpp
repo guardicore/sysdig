@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <signal.h>
 #include "scap.h"
 #include "guardig.h"
 #include "event.h"
@@ -7,7 +8,8 @@
 #include "defs.h"
 
 struct guardig_evttables g_infotables;
-struct stats g_stats = {};
+struct stats g_stats = {0};
+bool g_terminate = false;
 
 
 uint32_t interesting_events[] =
@@ -177,6 +179,30 @@ void init_event_mask(scap_t *handle)
 }
 
 
+static void signal_callback(int signal)
+{
+	g_terminate = true;
+}
+
+
+int init_signals()
+{
+	if(signal(SIGINT, signal_callback) == SIG_ERR)
+	{
+		fprintf(stderr, "An error occurred while setting SIGINT signal handler.\n");
+		return 1;
+	}
+
+	if(signal(SIGTERM, signal_callback) == SIG_ERR)
+	{
+		fprintf(stderr, "An error occurred while setting SIGTERM signal handler.\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+
 void print_drop_statistics(scap_t* capture)
 {
 	static uint64_t nevts = -1;
@@ -229,6 +255,8 @@ int32_t main()
 	guardig_evt gevent;
 	guardig_parser parser;
 
+	init_signals();
+
 	// FIXME: do I need to define this callback?
 	/*
 	if(!m_filter_proc_table_when_saving)
@@ -272,7 +300,21 @@ int32_t main()
 		gevent.m_pevt = event;
 		gevent.m_cpuid = cpuid;
 		parser.process_event(&inspector, &gevent);
+
+		if (g_terminate)
+			break;
 	}
+
+	scap_close(capture);
+
+	fprintf(stderr, "Summary:\n"
+					"--------\n"
+					"connect:\t%lu\n" "accept:\t\t%lu\n" "clone:\t\t%lu\n"
+					"execve:\t\t%lu\n" "procexit:\t%lu\n" "close_e:\t%lu\n"
+					"close_x:\t%lu\n" "send:\t\t%lu\n" "recv:\t\t%lu\n",
+					g_stats.m_n_connect, g_stats.m_n_accept, g_stats.m_n_clone,
+					g_stats.m_n_execve, g_stats.m_n_procexit, g_stats.m_n_close_e,
+					g_stats.m_n_close_x, g_stats.m_n_send, g_stats.m_n_recv);
 
 cleanup:
 	return 0;

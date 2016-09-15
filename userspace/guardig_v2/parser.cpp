@@ -7,6 +7,7 @@
 #include "process.h"
 #include "utils.h"
 
+extern stats g_stats;
 
 #define GET_PARAM(evt, num, var, type) 			\
 	do {										\
@@ -61,7 +62,7 @@ bool parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 		}
 		else
 		{
-			TRACE_DEBUG("ipv6 is not supported yet");
+			//TRACE_DEBUG("ipv6 is not supported yet");
 			return false;
 		}
 	}
@@ -155,10 +156,13 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 
 	conninfo = fdinfo->add_connection(newconn);
 
+#ifdef PRINT_REPORTS
 	if (!procinfo->m_printed_exec)
 		procinfo->print();
 
 	newconn.print();
+#endif
+
 	return conninfo;
 
 cleanup:
@@ -635,7 +639,9 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 
 	if (procinfo->m_had_connection)
 	{
+#ifdef PRINT_REPORTS
 		procinfo->print_close();
+#endif
 	}
 
 	// FIXME: maybe I can improve this line (because I'm querying
@@ -719,8 +725,10 @@ void guardig_parser::parse_close_exit(guardig_evt *pgevent)
 	{
 		connection *conninfo = &(it->second);
 		conninfo->m_errorcode = retval;
+#ifdef PRINT_REPORTS
 		conninfo->print_volume();
 		conninfo->print_close(pgevent->m_pevt->ts);
+#endif
 	}
 
 	procinfo->delete_fd(fd);
@@ -749,6 +757,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 		break;
 
 	case PPME_SOCKET_CONNECT_X:
+		g_stats.m_n_connect += 1;
 		parse_connect_exit(pgevent);
 		break;
 
@@ -756,6 +765,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SOCKET_ACCEPT_5_X:
 	case PPME_SOCKET_ACCEPT4_X:
 	case PPME_SOCKET_ACCEPT4_5_X:
+		g_stats.m_n_accept += 1;
 		parse_accept_exit(pgevent);
 		break;
 
@@ -769,6 +779,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_VFORK_X:
 	case PPME_SYSCALL_VFORK_17_X:
 	case PPME_SYSCALL_VFORK_20_X:
+		g_stats.m_n_clone += 1;
 		parse_clone_exit(pgevent);
 		break;
 
@@ -777,19 +788,23 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_EXECVE_14_X:
 	case PPME_SYSCALL_EXECVE_15_X:
 	case PPME_SYSCALL_EXECVE_16_X:
+		g_stats.m_n_execve += 1;
 		parse_execve_exit(pgevent);
 		break;
 
 	case PPME_PROCEXIT_E:
 	case PPME_PROCEXIT_1_E:
+		g_stats.m_n_procexit += 1;
 		parse_thread_exit(pgevent);
 		break;
 
 	case PPME_SYSCALL_CLOSE_E:
+		g_stats.m_n_close_e += 1;
 		parse_close_enter(pgevent);
 		break;
 
 	case PPME_SYSCALL_CLOSE_X:
+		g_stats.m_n_close_x += 1;
 		parse_close_exit(pgevent);
 		break;
 
@@ -799,6 +814,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_PWRITEV_X:
 	case PPME_SOCKET_SEND_X:
 	case PPME_SOCKET_SENDTO_X:
+		g_stats.m_n_send += 1;
 		parse_send_exit(pgevent);
 		break;
 
@@ -808,6 +824,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_PREADV_X:
 	case PPME_SOCKET_RECV_X:
 	case PPME_SOCKET_RECVFROM_X:
+		g_stats.m_n_recv += 1;
 		parse_recv_exit(pgevent);
 		break;
 

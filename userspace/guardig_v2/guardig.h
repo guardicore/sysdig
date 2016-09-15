@@ -17,6 +17,16 @@ public:
 	uint64_t m_n_noncached_fd_lookups;
 	uint64_t m_n_cached_proc_lookups;
 	uint64_t m_n_noncached_proc_lookups;
+
+	uint64_t m_n_connect;
+	uint64_t m_n_accept;
+	uint64_t m_n_clone;
+	uint64_t m_n_execve;
+	uint64_t m_n_procexit;
+	uint64_t m_n_close_e;
+	uint64_t m_n_close_x;
+	uint64_t m_n_send;
+	uint64_t m_n_recv;
 };
 
 
