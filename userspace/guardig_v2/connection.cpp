@@ -12,9 +12,9 @@
 #include "defs.h"
 
 
-void filedescriptor::add_connection(connection &conninfo)
+connection *filedescriptor::add_connection(connection &conninfo)
 {
-	m_conntable.add(conninfo.m_conntuple, conninfo);
+	return m_conntable.add(conninfo.m_conntuple, conninfo);
 }
 
 

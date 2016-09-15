@@ -86,7 +86,7 @@ public:
 		m_procinfo = NULL;
 	}
 
-	void add_connection(connection &conninfo);
+	connection *add_connection(connection &conninfo);
 	connection *get_connection(ipv4tuple &conntuple);
 	void delete_connection(ipv4tuple &conntuple);
 

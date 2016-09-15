@@ -42,7 +42,7 @@ private:
 
 	bool reset(guardig_evt *evt);
 
-	void add_connection_from_event(process *procinfo, guardig_evt *pgevent);
+	connection *add_connection_from_event(process *procinfo, guardig_evt *pgevent);
 
 	//void parse_socket_exit(guardig_evt *pgevent);
 	//void parse_bind_exit(guardig_evt *pgevent);

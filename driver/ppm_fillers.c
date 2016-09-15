@@ -388,19 +388,33 @@ const struct ppm_event_entry g_ppm_events[PPM_EVENT_MAX] = {
 #define merge_64(hi, lo) ((((unsigned long long)(hi)) << 32) + ((lo) & 0xffffffffUL))
 
 
-inline int is_socket(unsigned long fd)
+inline int is_supported_socket(unsigned long fd)
 {
-	struct socket *sock;
+	struct socket *sock = NULL;
+	int retval;
 	int err = 0;
 
 	sock = sockfd_lookup(fd, &err);
 
-	if (!sock) {
-		return 0;
+	if (!sock || !(sock->sk))
+	{
+		retval = 0;
+		goto cleanup;
 	}
 
-	sockfd_put(sock);
-	return 1;
+	if ((sock->type != SOCK_STREAM) && (sock->type != SOCK_DGRAM))
+	{
+		retval = 0;
+		goto cleanup;
+	}
+
+	retval = 1;
+
+cleanup:
+	if (sock)
+		sockfd_put(sock);
+
+	return retval;
 }
 
 
@@ -488,7 +502,7 @@ static int f_sys_close_x(struct event_filler_arguments *args)
 	//
 	// I can't call is_socket at this point because the socket is already closed.
 	//
-	//if (!is_socket(fd))
+	//if (!is_supported_socket(fd))
 	//	return PPM_FAILURE_GUARDIC_SILENT;
 
 	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
@@ -639,12 +653,14 @@ static int f_sys_read_x(struct event_filler_arguments *args)
 	int res;
 	int64_t retval;
 	unsigned long bufsize;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	if (!is_socket(val))
+	if (!is_supported_socket(val))
 		return PPM_FAILURE_GUARDIC_SILENT;
 
 	args->fd = (int)val;
@@ -684,6 +700,24 @@ static int f_sys_read_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
+	size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				true,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+	            (uint64_t)(unsigned long)targetbuf,
+	            size,
+	            false,
+	            0);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
+
 	res = val_to_ring(args, args->fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
@@ -701,12 +735,14 @@ static int f_sys_write_x(struct event_filler_arguments *args)
 	int res;
 	int64_t retval;
 	unsigned long bufsize;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	if (!is_socket(val))
+	if (!is_supported_socket(val))
 		return PPM_FAILURE_GUARDIC_SILENT;
 
 	args->fd = (int)val;
@@ -734,6 +770,24 @@ static int f_sys_write_x(struct event_filler_arguments *args)
 	res = val_to_ring(args, val, bufsize, true, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
+
+	size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+	            (uint64_t)(unsigned long)targetbuf,
+	            size,
+	            false,
+	            0);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
 
 	res = val_to_ring(args, args->fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
@@ -2028,6 +2082,7 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 	char parent_comm[TASK_COMM_LEN] = "unknown";
 	struct socket *sock;
 	short type = 0;
+	u8 is_connected = 1;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
@@ -2038,6 +2093,9 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 		val = args->socketcall_args[0];
 
 	args->fd = (int)val;
+
+	if (!is_supported_socket(args->fd))
+		return PPM_FAILURE_GUARDIC_SILENT;
 
 	/*
 	 * res
@@ -2105,6 +2163,7 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 			/*
 			 * Convert the fd into socket endpoint information
 			 */
+			is_connected = 0;
 			size = fd_to_socktuple(args->fd,
 				(struct sockaddr *)&address,
 				val,
@@ -2113,6 +2172,22 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 				targetbuf,
 				STR_STORAGE_SIZE);
 		}
+	}
+
+	if (size == 0)
+	{
+		/*
+		 * It's proabably a regular send and the address is not an argument.
+		 * Just get the tuple from the socket.
+		 */
+		is_connected = 1;
+		size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
 	}
 
 	/*
@@ -2180,6 +2255,11 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 	if (res != PPM_SUCCESS)
 		return res;
 
+	/* PT_UINT8 */
+	res = val_to_ring(args, (unsigned long)is_connected, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
 	return add_sentinel(args);
 }
 
@@ -2190,6 +2270,8 @@ static int f_sys_send_x(struct event_filler_arguments *args)
 	int res;
 	int64_t retval;
 	unsigned long bufsize;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
@@ -2233,6 +2315,24 @@ static int f_sys_send_x(struct event_filler_arguments *args)
 
 	args->enforce_snaplen = true;
 	res = val_to_ring(args, val, bufsize, true, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	size = fd_to_socktuple(args->fd,
+			NULL,
+			0,
+			false,
+			false,
+			targetbuf,
+			STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+				(uint64_t)(unsigned long)targetbuf,
+				size,
+				false,
+				0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -2358,10 +2458,30 @@ static int f_sys_recv_x(struct event_filler_arguments *args)
 {
 	int res;
 	int64_t retval;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	res = f_sys_recv_x_common(args, &retval);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
+
+	size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				true,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+	            (uint64_t)(unsigned long)targetbuf,
+	            size,
+	            false,
+	            0);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
 
 	res = val_to_ring(args, args->fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
@@ -2392,6 +2512,7 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	char parent_comm[TASK_COMM_LEN] = "unknown";
 	struct socket *sock;
 	short type = 0;
+	u8 is_connected = 1;
 
 	/*
 	 * Push the common params to the ring
@@ -2408,6 +2529,9 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 		fd = (int)val;
 	} else
 		fd = (int)args->socketcall_args[0];
+
+	if (!is_supported_socket(fd))
+		return PPM_FAILURE_GUARDIC_SILENT;
 
 	if (retval >= 0) {
 		/*
@@ -2447,6 +2571,7 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 				/*
 				 * Convert the fd into socket endpoint information
 				 */
+				is_connected = 0;
 				size = fd_to_socktuple(fd,
 					(struct sockaddr *)&address,
 					addrlen,
@@ -2456,6 +2581,22 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 					STR_STORAGE_SIZE);
 			}
 		}
+	}
+
+	if (size == 0)
+	{
+		/*
+		 * It's proabably a regular recv and the address is not an argument.
+		 * Just get the tuple from the socket.
+		 */
+		is_connected = 1;
+		size = fd_to_socktuple(fd,
+				NULL,
+				0,
+				false,
+				true,
+				targetbuf,
+				STR_STORAGE_SIZE);
 	}
 
 	/*
@@ -2520,6 +2661,11 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 
 	/* PT_UID */
 	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UINT8 */
+	res = val_to_ring(args, (unsigned long)is_connected, 0, false, 0);
 	if (res != PPM_SUCCESS)
 		return res;
 
@@ -3771,12 +3917,14 @@ static int f_sys_readv_x(struct event_filler_arguments *args)
 #endif
 	const struct iovec __user *iov;
 	unsigned long iovcnt;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	if (!is_socket(val))
+	if (!is_supported_socket(val))
 		return PPM_FAILURE_GUARDIC_SILENT;
 
 	args->fd = (int)val;
@@ -3808,6 +3956,24 @@ static int f_sys_readv_x(struct event_filler_arguments *args)
 	}
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
+
+	size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				true,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+	            (uint64_t)(unsigned long)targetbuf,
+	            size,
+	            false,
+	            0);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
 
 	res = val_to_ring(args, args->fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
@@ -3877,12 +4043,14 @@ static int f_sys_writev_pwritev_x(struct event_filler_arguments *args)
 #endif
 	const struct iovec __user *iov;
 	unsigned long iovcnt;
+	u16 size = 0;
+	char *targetbuf = args->str_storage;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	if (!is_socket(val))
+	if (!is_supported_socket(val))
 		return PPM_FAILURE_GUARDIC_SILENT;
 
 	args->fd = (int)val;
@@ -3917,6 +4085,24 @@ static int f_sys_writev_pwritev_x(struct event_filler_arguments *args)
 	}
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
+
+	size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	/*
+	 * Copy the endpoint info into the ring
+	 */
+	res = val_to_ring(args,
+	            (uint64_t)(unsigned long)targetbuf,
+	            size,
+	            false,
+	            0);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
 
 	res = val_to_ring(args, args->fd, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
@@ -3984,7 +4170,7 @@ static int f_sys_preadv_x(struct event_filler_arguments *args)
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
 	 */
 	syscall_get_arguments(current, args->regs, 0, 1, &val);
-	if (!is_socket(val))
+	if (!is_supported_socket(val))
 		return PPM_FAILURE_GUARDIC_SILENT;
 
 	args->fd = (int)val;

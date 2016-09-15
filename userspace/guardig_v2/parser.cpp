@@ -82,7 +82,7 @@ bool parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 }
 
 
-void guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *pgevent)
+connection *guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	uint8_t* packed_data;
@@ -91,6 +91,7 @@ void guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *p
 	filedescriptor *fdinfo;
 	filedescriptor newfd;
 	connection newconn;
+	connection *conninfo;
 
 	switch (pgevent->m_pevt->type)
 	{
@@ -134,7 +135,7 @@ void guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *p
 	newfd.m_procinfo = procinfo;
 
 	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
-		return;
+		return NULL;
 
 	//
 	// Update addresses if one of then was empty
@@ -145,36 +146,30 @@ void guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *p
 	if (fdinfo == NULL)
 	{
 		TRACE_DEBUG("fd table is full");
-		return;
+		return NULL;
 	}
 
-	if (fdinfo->get_connection(newconn.m_conntuple) == NULL)
-	{
-		newconn.set_time(pgevent->m_pevt->ts);
-		newconn.m_errorcode = res;
-		newconn.m_fdinfo = fdinfo;
+	newconn.set_time(pgevent->m_pevt->ts);
+	newconn.m_errorcode = res;
+	newconn.m_fdinfo = fdinfo;
 
-		fdinfo->add_connection(newconn);
+	conninfo = fdinfo->add_connection(newconn);
 
-		if (!procinfo->m_printed_exec)
-			procinfo->print();
+	if (!procinfo->m_printed_exec)
+		procinfo->print();
 
-		newconn.print();
-	}
+	newconn.print();
+	return conninfo;
 
 cleanup:
-	return;
+	return NULL;
 }
 
 
 void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
-	uint8_t* packed_data;
 	process *procinfo;
-	filedescriptor *fdinfo;
-	filedescriptor newfd;
-	connection newconn("accept");
 	int64_t pid, fd;
 
 	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
@@ -224,19 +219,15 @@ cleanup:
 void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
-	uint8_t *packed_data;
-	filedescriptor *fdinfo;
-	filedescriptor newfd;
-	connection newconn("connect");
 	process *procinfo;
-	int64_t pid;
+	int64_t pid, res;
 
-	GET_PARAM(pgevent, 0, newconn.m_errorcode, uint64_t);
+	GET_PARAM(pgevent, 0, res, uint64_t);
 
-	if (newconn.m_errorcode < 0)
+	if (res < 0)
 	{
 		// connections that return with a SE_EINPROGRESS are totally legit.
-		if(newconn.m_errorcode != -EINPROGRESS)
+		if(res != -EINPROGRESS)
 		{
 			return;
 		}
@@ -281,34 +272,27 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	process *procinfo;
 	filedescriptor *fdinfo;
 	connection *conninfo;
+	uint8_t* packed_data;
+	ipv4tuple conntuple, inverse_tuple;
+	uint8_t is_connected = 1;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 
 	if (res < 0)
 	{
 		//
-		// We don't report failed UDP connections.
+		// We don't care about failed send events. Just continue.
 		//
 		return;
 	}
 
-	switch(pgevent->m_pevt->type)
+	GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
+	GET_PARAM(pgevent, 3, fd, int64_t);
+	GET_PARAM(pgevent, 4, pid, int64_t);
+
+	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X)
 	{
-	case PPME_SOCKET_SENDTO_X:
-		GET_PARAM(pgevent, 3, fd, int64_t);
-		GET_PARAM(pgevent, 4, pid, int64_t);
-		break;
-	case PPME_SYSCALL_PWRITE_X:
-	case PPME_SYSCALL_WRITE_X:
-	case PPME_SYSCALL_WRITEV_X:
-	case PPME_SYSCALL_PWRITEV_X:
-	case PPME_SOCKET_SEND_X:
-		GET_PARAM(pgevent, 2, fd, int64_t);
-		GET_PARAM(pgevent, 3, pid, int64_t);
-		break;
-	default:
-		ASSERT(false);
-		return;
+		GET_PARAM(pgevent, 10, is_connected, uint8_t);
 	}
 
 	procinfo = m_inspector->get_process(pid, true);
@@ -318,48 +302,53 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X)
+	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X &&
+		procinfo->m_uid == -1)
 	{
-		parinfo = pgevent->get_param(2);
-		if (parinfo != NULL &&
-			parinfo->m_len != 0)
-		{
-			add_connection_from_event(procinfo, pgevent);
-		}
-		else
-		{
-			//
-			// The connection tuple is empty, this is probably just a regular send
-			//
-		}
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		// Note: ATM I'm only supporting recv_from, because in other events I should've
+		// seen the connection before with connect / accept.
+		//
+		GET_PARAM_BUFFER(pgevent, 6, procinfo->m_comm, char*);
+		GET_PARAM(pgevent, 7, procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, 8, procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, 9, procinfo->m_uid, uint32_t);
 	}
+
+	if (!parse_packed_tuple(packed_data, &conntuple))
+		return;
+
+	//
+	// Update addresses if one of then was empty
+	//
+	m_inspector->m_network_interfaces.update_tuple(&conntuple);
+	conntuple.get_inverse_tuple(inverse_tuple);
 
 	fdinfo = procinfo->get_fd(fd);
 	if (fdinfo == NULL)
 	{
-		return;
+		goto add_connection;
 	}
-	else
+
+	conninfo = fdinfo->get_connection(conntuple);
+	if (conninfo == NULL)
+		conninfo = fdinfo->get_connection(inverse_tuple);
+
+	if (conninfo == NULL)
 	{
-		// FIXME: I'm taking the first connection in the FD.
-		// add the tuple information to the event and parse it.
-		auto it = fdinfo->m_conntable.begin();
-		if (it == fdinfo->m_conntable.end())
-		{
-			return;
-		}
+		goto add_connection;
+	}
 
-		conninfo = &(it->second);
-		if (conninfo == NULL)
-		{
-			// FIXME: add the connection?
-			return;
-		}
+	conninfo->m_sent_bytes += res;
+	return;
 
-		// FIXME: make sanity checks on the connection tuple to make sure
-		// we're adding the result to the right connection.
-		// For example, what if we missed the close and new connect events?
-		if (res > 0)
+add_connection:
+	if (!is_connected)
+	{
+		conninfo = add_connection_from_event(procinfo, pgevent);
+		if (conninfo != NULL)
 			conninfo->m_sent_bytes += res;
 	}
 
@@ -376,44 +365,33 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 	process *procinfo;
 	filedescriptor *fdinfo;
 	connection *conninfo;
+	uint8_t* packed_data;
+	ipv4tuple conntuple, inverse_tuple;
+	uint8_t is_connected = 1;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 
 	if (res < 0)
 	{
 		//
-		// We don't report failed UDP connections.
-		// Also, the kernel module will not pass us all the parameters in this case,
-		// just continue.
+		// We don't care about failed recv events. Just continue.
 		//
 		return;
 	}
 
-	switch(pgevent->m_pevt->type)
+	GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
+	GET_PARAM(pgevent, 3, fd, int64_t);
+	GET_PARAM(pgevent, 4, pid, int64_t);
+
+	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
 	{
-	case PPME_SOCKET_RECVFROM_X:
-	case PPME_SYSCALL_READV_X:
-	case PPME_SYSCALL_PREADV_X:
-		GET_PARAM(pgevent, 3, fd, int64_t);
-		GET_PARAM(pgevent, 4, pid, int64_t);
-		break;
-	case PPME_SOCKET_RECV_X:
-	case PPME_SYSCALL_READ_X:
-		GET_PARAM(pgevent, 2, fd, int64_t);
-		GET_PARAM(pgevent, 3, pid, int64_t);
-		break;
-	default:
-		ASSERT(false);
-		return;
+		GET_PARAM(pgevent, 10, is_connected, uint8_t);
 	}
 
 	procinfo = m_inspector->get_process(pid, true);
 	if (procinfo == NULL)
 	{
-		//
-		// Process table is full
-		//
-		ASSERT(false);
+		TRACE_DEBUG("process table is full");
 		return;
 	}
 
@@ -432,54 +410,39 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 9, procinfo->m_uid, uint32_t);
 	}
 
-	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
-	{
-		parinfo = pgevent->get_param(2);
-		if (parinfo != NULL &&
-			parinfo->m_len != 0)
-		{
-			add_connection_from_event(procinfo, pgevent);
-		}
-		else
-		{
-			//
-			// The connection tuple is empty, this is probably just a regular recv
-			//
-		}
-	}
+	if (!parse_packed_tuple(packed_data, &conntuple))
+		return;
+
+	//
+	// Update addresses if one of then was empty
+	//
+	m_inspector->m_network_interfaces.update_tuple(&conntuple);
+	conntuple.get_inverse_tuple(inverse_tuple);
 
 	fdinfo = procinfo->get_fd(fd);
 	if (fdinfo == NULL)
 	{
-		//
-		// can't find FD, should happen only if we missed the connect / accept event.
-		//
-		// ASSERT(false);
-		return;
+		goto add_connection;
 	}
 
-	// This is a hack to fix a compilation error.
-	if (true)
+	conninfo = fdinfo->get_connection(conntuple);
+	if (conninfo == NULL)
+		conninfo = fdinfo->get_connection(inverse_tuple);
+
+	if (conninfo == NULL)
 	{
-		// FIXME: I'm taking the first connection in the FD.
-		// add the tuple information to the event and parse it.
-		auto it = fdinfo->m_conntable.begin();
-		if (it == fdinfo->m_conntable.end())
-		{
-			return;
-		}
+		goto add_connection;
+	}
 
-		conninfo = &(it->second);
-		if (conninfo == NULL)
-		{
-			// FIXME: add the connection?
-			return;
-		}
+	conninfo->m_recv_bytes += res;
+	return;
 
-		// FIXME: make sanity checks on the connection tuple to make sure
-		// we're adding the result to the right connection.
-		// For example, what if we missed the close and new connect events?
-		conninfo->m_recv_bytes += res;
+add_connection:
+	if (!is_connected)
+	{
+		conninfo = add_connection_from_event(procinfo, pgevent);
+		if (conninfo != NULL)
+			conninfo->m_recv_bytes += res;
 	}
 
 cleanup:

@@ -37,10 +37,18 @@ typedef union _ipv4tuple
 		uint16_t m_dport; ///< Destination (i.e. server) port.
 	};
 	uint8_t m_all[12]; ///< The fields as a raw array ob bytes. Used for hashing.
+
+	inline void get_inverse_tuple(_ipv4tuple &inverse)
+	{
+		inverse.m_sip = m_dip;
+		inverse.m_dip = m_sip;
+		inverse.m_sport = m_dport;
+		inverse.m_dport = m_sport;
+	}
 } ipv4tuple;
 
 
-inline bool operator==(ipv4tuple a, ipv4tuple b)
+inline bool operator==(const ipv4tuple &a, const ipv4tuple &b)
 {
 	return (a.m_sip == b.m_sip &&
 			a.m_dip == b.m_dip &&
