@@ -90,7 +90,6 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 	int64_t fd, res;
 	uint16_t proto;
 	filedescriptor *fdinfo;
-	filedescriptor newfd;
 	connection newconn;
 	connection *conninfo;
 
@@ -130,6 +129,8 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 		break;
 	}
 
+	{
+	filedescriptor newfd(proto);
 	newfd.m_fd = fd;
 	newfd.m_type = SCAP_FD_IPV4_SOCK;
 	newfd.m_proto = proto;
@@ -155,15 +156,7 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 			// There's an existing FD that wasn't closed (we probably missed the close
 			// event). Print its connections and replace it by the new FD.
 			//
-			for ( auto connit = fdinfo->m_conntable.begin(); connit != fdinfo->m_conntable.end(); ++connit )
-			{
-				connection *conninfo = &(connit->second);
-#ifdef PRINT_REPORTS
-				conninfo->print_volume();
-				conninfo->print_close(pgevent->m_pevt->ts);
-#endif
-			}
-
+			fdinfo->close_all_connections(pgevent->m_pevt->ts);
 		}
 
 		fdinfo = procinfo->add_fd(newfd);
@@ -188,11 +181,12 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 		if (!procinfo->m_printed_exec)
 			procinfo->print();
 
-		newconn.print();
+		conninfo->print();
 	}
 #endif
 
 	return conninfo;
+	}
 
 cleanup:
 	return NULL;
@@ -701,14 +695,7 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 	for ( auto fdit = procinfo->m_fdtable.begin(); fdit != procinfo->m_fdtable.end(); ++fdit )
 	{
 		filedescriptor *fdinfo = &(fdit->second);
-		for ( auto connit = fdinfo->m_conntable.begin(); connit != fdinfo->m_conntable.end(); ++connit )
-		{
-			connection *conninfo = &(connit->second);
-#ifdef PRINT_REPORTS
-			conninfo->print_volume();
-			conninfo->print_close(pgevent->m_pevt->ts);
-#endif
-		}
+		fdinfo->close_all_connections(pgevent->m_pevt->ts);
 	}
 
 	if (procinfo->m_had_connection)
@@ -761,15 +748,14 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 		return;
 	}
 
-	for ( auto it = fdinfo->m_conntable.begin(); it != fdinfo->m_conntable.end(); ++it )
-	{
-		connection *conninfo = &(it->second);
-#ifdef PRINT_REPORTS
-		conninfo->print_volume();
-		conninfo->print_close(pgevent->m_pevt->ts);
-#endif
-	}
+	//
+	// Close all connections before deletion.
+	//
+	fdinfo->close_all_connections(pgevent->m_pevt->ts);
 
+	//
+	// Delete fd from the process.
+	//
 	procinfo->delete_fd(fd);
 
 cleanup:

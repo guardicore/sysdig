@@ -79,22 +79,27 @@ public:
 class filedescriptor
 {
 public:
-	filedescriptor() : m_conntable(MAX_CONN_TABLE_SIZE)
+	filedescriptor(uint32_t proto) : m_conntable(MAX_CONN_TABLE_SIZE)
 	{
 		m_fd = -1;
 		m_type = SCAP_FD_UNINITIALIZED;
-		m_proto = 0;
+		m_proto = proto;
 		m_procinfo = NULL;
+		m_tcp_conn_valid = false;
 	}
 
 	connection *add_connection(connection &conninfo);
 	connection *get_connection(ipv4tuple &conntuple);
 	void delete_connection(ipv4tuple &conntuple);
+	void close_all_connections(uint64_t timestamp);
 
 	int64_t m_fd;
 	scap_fd_type m_type;
 	uint32_t m_proto;
 	process *m_procinfo;
+
+	connection m_tcp_conn;
+	bool m_tcp_conn_valid;
 	cache_map<ipv4tuple, connection, ipv4tupleHash> m_conntable;
 };
 

@@ -14,19 +14,93 @@
 
 connection *filedescriptor::add_connection(connection &conninfo)
 {
-	return m_conntable.add(conninfo.m_conntuple, conninfo);
+	switch(m_proto)
+	{
+	case SOCK_DGRAM:
+		return m_conntable.add(conninfo.m_conntuple, conninfo);
+	case SOCK_STREAM:
+		m_tcp_conn_valid = true;
+		m_tcp_conn = conninfo;
+		return &m_tcp_conn;
+	default:
+		TRACE_DEBUG("unknown protocol");
+		return NULL;
+	}
 }
 
 
 connection *filedescriptor::get_connection(ipv4tuple &conntuple)
 {
-	return m_conntable.get(conntuple);
+	switch(m_proto)
+	{
+	case SOCK_DGRAM:
+		return m_conntable.get(conntuple);
+
+	case SOCK_STREAM:
+		if (m_tcp_conn_valid && m_tcp_conn.m_conntuple == conntuple)
+			return &m_tcp_conn;
+		else
+			return NULL;
+
+	default:
+		TRACE_DEBUG("unknown protocol");
+		return NULL;
+	}
 }
 
 
 void filedescriptor::delete_connection(ipv4tuple &conntuple)
 {
-	m_conntable.remove(conntuple);
+	switch(m_proto)
+	{
+	case SOCK_DGRAM:
+		m_conntable.remove(conntuple);
+		break;
+
+	case SOCK_STREAM:
+		if (m_tcp_conn_valid)
+		{
+			m_tcp_conn_valid = false;
+			m_tcp_conn.init();
+		}
+		break;
+
+	default:
+		TRACE_DEBUG("unknown protocol");
+		break;
+	}
+}
+
+
+void filedescriptor::close_all_connections(uint64_t timestamp)
+{
+	switch(m_proto)
+	{
+	case SOCK_DGRAM:
+		for ( auto it = m_conntable.begin(); it != m_conntable.end(); ++it )
+		{
+			connection *conninfo = &(it->second);
+#ifdef PRINT_REPORTS
+			conninfo->print_volume();
+			conninfo->print_close(timestamp);
+#endif
+		}
+		break;
+
+	case SOCK_STREAM:
+		if (m_tcp_conn_valid)
+		{
+#ifdef PRINT_REPORTS
+			m_tcp_conn.print_volume();
+			m_tcp_conn.print_close(timestamp);
+#endif
+		}
+		break;
+
+	default:
+		TRACE_DEBUG("unknown protocol");
+		break;
+	}
 }
 
 
