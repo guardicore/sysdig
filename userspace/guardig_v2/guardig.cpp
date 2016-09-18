@@ -107,9 +107,9 @@ uint32_t interesting_events[] =
 };
 
 
-void guardig::add_process(process &procinfo) //, bool from_scap_proctable)
+process *guardig::add_process(process &procinfo) //, bool from_scap_proctable)
 {
-	m_proctable.add(procinfo.m_pid, procinfo);
+	return m_proctable.add(procinfo.m_pid, procinfo);
 }
 
 
@@ -132,7 +132,24 @@ process *guardig::get_process(int64_t pid, bool query_os)
 
 		if(scap_proc)
 		{
+			scap_threadinfo *scap_parent;
+
 			newproc.init(scap_proc);
+
+			//
+			// Get parent information.
+			// The ptid is a thread in the parent process (and not in the current process),
+			// because the function was called with a PID and not a tid.
+			//
+			scap_parent = scap_proc_get(m_capture, scap_proc->ptid, false);
+			if (scap_parent)
+			{
+				newproc.m_ppid = scap_parent->pid;
+				newproc.m_pcomm = scap_parent->comm;
+
+				scap_proc_free(m_capture, scap_parent);
+			}
+
 			scap_proc_free(m_capture, scap_proc);
 		}
 		else
@@ -143,8 +160,7 @@ process *guardig::get_process(int64_t pid, bool query_os)
 			newproc.m_pid = pid;
 		}
 
-		add_process(newproc);
-		procinfo = find_process(pid);
+		procinfo = add_process(newproc);
 	}
 
 	return procinfo;

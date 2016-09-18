@@ -51,10 +51,8 @@ public:
 	{
 		m_evt_name = "execve";
 		m_pid = pi->pid;
-		m_ppid = pi->ptid; // FIXME: is this ok?
 		m_comm = pi->comm;
 		m_exe = pi->exe;
-		// pcomm?
 		m_cwd = pi->cwd;
 		set_cgroups(pi->cgroups, pi->cgroups_len);
 		set_args(pi->args, pi->args_len);

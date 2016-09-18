@@ -42,7 +42,7 @@ public:
 	process *find_process(int64_t pid);
 	process *get_process(int64_t pid, bool query_os);
 	void delete_process(int64_t pid);
-	void add_process(process &proc);
+	process *add_process(process &proc);
 
 	cache_map<int64_t, process> m_proctable;
 	sinsp_network_interfaces m_network_interfaces;
