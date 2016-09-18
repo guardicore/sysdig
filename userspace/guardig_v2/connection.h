@@ -48,9 +48,10 @@ public:
 		m_sent_bytes = 0;
 		m_recv_bytes = 0;
 		m_fdinfo = NULL;
+		m_printed_creation = false;
 	}
 
-	void print();
+	void print(bool with_volume=false);
 	void print_close(uint64_t time);
 	void print_volume();
 
@@ -69,6 +70,7 @@ public:
 	ipv4tuple m_conntuple;
 	uint64_t m_sent_bytes;
 	uint64_t m_recv_bytes;
+	bool m_printed_creation;
 
 	filedescriptor *m_fdinfo;
 };

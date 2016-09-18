@@ -182,10 +182,14 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 	conninfo = fdinfo->add_connection(newconn);
 
 #ifdef PRINT_REPORTS
-	if (!procinfo->m_printed_exec)
-		procinfo->print();
+	if (! ( (pgevent->m_pevt->type == PPME_SOCKET_CONNECT_X && res == -EINPROGRESS) ||
+		    (pgevent->m_pevt->type == PPME_SOCKET_CONNECT_X && proto == SOCK_DGRAM) ) )
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
 
-	newconn.print();
+		newconn.print();
+	}
 #endif
 
 	return conninfo;
@@ -370,6 +374,22 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 		goto add_connection;
 	}
 
+#ifdef PRINT_REPORTS
+	//
+	// Check if delayed print is necessary
+	//
+	if (!conninfo->m_printed_creation)
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
+
+		if (conninfo->m_errorcode == -EINPROGRESS)
+			conninfo->m_errorcode = 0;
+
+		conninfo->print();
+	}
+#endif
+
 	conninfo->m_sent_bytes += res;
 	return;
 
@@ -462,6 +482,22 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 	{
 		goto add_connection;
 	}
+
+#ifdef PRINT_REPORTS
+	//
+	// Check if delayed print is necessary
+	//
+	if (!conninfo->m_printed_creation)
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
+
+		if (conninfo->m_errorcode == -EINPROGRESS)
+			conninfo->m_errorcode = 0;
+
+		conninfo->print();
+	}
+#endif
 
 	conninfo->m_recv_bytes += res;
 	return;
