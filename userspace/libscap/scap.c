@@ -78,7 +78,7 @@ scap_t* scap_open_live_int(char *error,
 	scap_t* handle = NULL;
 	int len;
 	uint32_t ndevs;
-	uint32_t res;
+	//uint32_t res;
 	uint32_t max_devs;
 	uint32_t all_scanned_devs;
 
@@ -263,6 +263,12 @@ scap_t* scap_open_live_int(char *error,
 	// Create the process list
 	//
 	error[0] = '\0';
+
+	//
+	// guyk: don't create the process list, it uses lots of memory.
+	// Just query the process info on runtime when Guardig needs the information.
+	//
+	/*
 	snprintf(filename, sizeof(filename), "%s/proc", scap_get_host_root());
 	if((res = scap_proc_scan_proc_dir(handle, filename, -1, -1, NULL, error, true)) != SCAP_SUCCESS)
 	{
@@ -270,6 +276,7 @@ scap_t* scap_open_live_int(char *error,
 		snprintf(error, SCAP_LASTERR_SIZE, "error creating the process list. Make sure you have root credentials.");
 		return NULL;
 	}
+	*/
 
 	//
 	// Now that sysdig has done all its /proc parsing, start the capture
