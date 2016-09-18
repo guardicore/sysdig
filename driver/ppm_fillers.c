@@ -146,8 +146,7 @@ static int f_sys_ppoll_e(struct event_filler_arguments *args);
 static int f_sys_mount_e(struct event_filler_arguments *args);
 static int f_sys_access_e(struct event_filler_arguments *args);
 static int f_sys_access_x(struct event_filler_arguments *args);
-static int f_sys_close(struct event_filler_arguments *args);
-static int f_sys_close_x(struct event_filler_arguments *args);
+static int f_sys_close_e(struct event_filler_arguments *args);
 
 /*
  * Note, this is not part of g_event_info because we want to share g_event_info with userland.
@@ -160,8 +159,8 @@ const struct ppm_event_entry g_ppm_events[PPM_EVENT_MAX] = {
 	[PPME_SYSCALL_OPEN_X] = {f_sys_open_x},
 	[PPME_SYSCALL_CREAT_E] = {f_sys_empty},
 	[PPME_SYSCALL_CREAT_X] = {PPM_AUTOFILL, 3, APT_REG, {{AF_ID_RETVAL}, {0}, {AF_ID_USEDEFAULT, 0} } },
-	[PPME_SYSCALL_CLOSE_E] = {f_sys_close},
-	[PPME_SYSCALL_CLOSE_X] = {f_sys_close_x},
+	[PPME_SYSCALL_CLOSE_E] = {f_sys_close_e},
+	[PPME_SYSCALL_CLOSE_X] = {f_sys_single_x},
 	[PPME_SYSCALL_READ_E] = {PPM_AUTOFILL, 2, APT_REG, {{0}, {2} } },
 	[PPME_SYSCALL_READ_X] = {f_sys_read_x},
 	[PPME_SYSCALL_WRITE_E] = {PPM_AUTOFILL, 2, APT_REG, {{0}, {2} } },
@@ -472,49 +471,27 @@ static int f_sys_empty(struct event_filler_arguments *args)
 	return add_sentinel(args);
 }
 
-static int f_sys_close(struct event_filler_arguments *args)
+static int f_sys_close_e(struct event_filler_arguments *args)
 {
 	int res;
 	unsigned long fd;
+	struct socket *sock;
+	int err = 0;
 
 	syscall_get_arguments(current, args->regs, 0, 1, &fd);
-	if (!is_socket(fd))
+	sock = sockfd_lookup(fd, &err);
+
+	if (!sock) {
 		return PPM_FAILURE_GUARDIC_SILENT;
+	}
+
+	sockfd_put(sock);
 
 	res = val_to_ring(args, fd, 0, true, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
 	res = val_to_ring(args, (int64_t)current->tgid, 0, true, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	return add_sentinel(args);
-}
-
-static int f_sys_close_x(struct event_filler_arguments *args)
-{
-	int res;
-	unsigned long fd;
-	int64_t retval;
-
-	syscall_get_arguments(current, args->regs, 0, 1, &fd);
-	//
-	// I can't call is_socket at this point because the socket is already closed.
-	//
-	//if (!is_supported_socket(fd))
-	//	return PPM_FAILURE_GUARDIC_SILENT;
-
-	retval = (int64_t)(long)syscall_get_return_value(current, args->regs);
-	res = val_to_ring(args, retval, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, (int64_t)current->tgid, 0, true, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, fd, 0, true, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 

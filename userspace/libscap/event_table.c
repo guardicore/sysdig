@@ -25,7 +25,7 @@ const struct ppm_event_info g_event_info[PPM_EVENT_MAX] = {
 	/* PPME_SYSCALL_OPEN_E */{"open", EC_FILE, EF_CREATES_FD | EF_MODIFIES_STATE, 0},
 	/* PPME_SYSCALL_OPEN_X */{"open", EC_FILE, EF_CREATES_FD | EF_MODIFIES_STATE, 4, {{"fd", PT_FD, PF_DEC}, {"name", PT_FSPATH, PF_NA}, {"flags", PT_FLAGS32, PF_HEX, file_flags}, {"mode", PT_UINT32, PF_HEX} } },
 	/* PPME_SYSCALL_CLOSE_E */{"close", EC_IO_OTHER, EF_DESTROYS_FD | EF_USES_FD | EF_MODIFIES_STATE | EF_DROP_FALCO, 2, {{"fd", PT_FD, PF_DEC}, {"pid", PT_PID, PF_DEC} } },
-	/* PPME_SYSCALL_CLOSE_X */{"close", EC_IO_OTHER, EF_DESTROYS_FD | EF_USES_FD | EF_MODIFIES_STATE | EF_DROP_FALCO, 3, {{"res", PT_ERRNO, PF_DEC}, {"pid", PT_PID, PF_DEC}, {"fd", PT_FD, PF_DEC} } },
+	/* PPME_SYSCALL_CLOSE_X */{"close", EC_IO_OTHER, EF_DESTROYS_FD | EF_USES_FD | EF_MODIFIES_STATE | EF_DROP_FALCO, 1, {{"res", PT_ERRNO, PF_DEC} } },
 	/* PPME_SYSCALL_READ_E */{"read", EC_IO_READ, EF_USES_FD | EF_READS_FROM_FD | EF_DROP_FALCO, 2, {{"fd", PT_FD, PF_DEC}, {"size", PT_UINT32, PF_DEC} } },
 	/* PPME_SYSCALL_READ_X */{"read", EC_IO_READ, EF_USES_FD | EF_READS_FROM_FD | EF_DROP_FALCO, 5, {{"res", PT_ERRNO, PF_DEC}, {"data", PT_BYTEBUF, PF_NA}, {"tuple", PT_SOCKTUPLE, PF_NA}, {"fd", PT_FD, PF_DEC}, {"pid", PT_PID, PF_DEC} } },
 	/* PPME_SYSCALL_WRITE_E */{"write", EC_IO_WRITE, EF_USES_FD | EF_WRITES_TO_FD | EF_DROP_FALCO, 2, {{"fd", PT_FD, PF_DEC}, {"size", PT_UINT32, PF_DEC} } },

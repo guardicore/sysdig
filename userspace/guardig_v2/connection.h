@@ -84,7 +84,6 @@ public:
 		m_fd = -1;
 		m_type = SCAP_FD_UNINITIALIZED;
 		m_proto = 0;
-		m_flags = FLAGS_NONE;
 		m_procinfo = NULL;
 	}
 
@@ -95,16 +94,8 @@ public:
 	int64_t m_fd;
 	scap_fd_type m_type;
 	uint32_t m_proto;
-	uint32_t m_flags;
 	process *m_procinfo;
 	cache_map<ipv4tuple, connection, ipv4tupleHash> m_conntable;
-
-	enum flags
-	{
-		FLAGS_NONE = 0,
-		FLAGS_CLOSE_IN_PROGRESS = (1 << 4),
-		FLAGS_CLOSE_CANCELED = (1 << 5)
-	};
 };
 
 #endif /* USERSPACE_GUARDIG_V2_CONNECTION_H_ */

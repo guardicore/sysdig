@@ -725,9 +725,21 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 }
 
 
+/*
+ * Note: We parse only close_enter and not close_exit because then we are guaranteed
+ * to be called before a new fd with the same number is created.
+ * Otherwise there could be a race:
+ * 		- close_enter
+ * 		- socket_enter
+ * 		- socket_exit
+ * 		- close_exit
+ * We assume that if the call to sockfd_lookup in the kernel succeeds then the fd is valid
+ * and the close will be successful.
+ */
 void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
+	int64_t retval;
 	int64_t fd, pid;
 	process *procinfo;
 	filedescriptor *fdinfo;
@@ -746,52 +758,6 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 	if (fdinfo == NULL)
 	{
 		//TRACE_DEBUG("couldn't find connection");
-		return;
-	}
-
-	fdinfo->m_flags |= filedescriptor::FLAGS_CLOSE_IN_PROGRESS;
-
-cleanup:
-	return;
-}
-
-
-void guardig_parser::parse_close_exit(guardig_evt *pgevent)
-{
-	guardig_evt_param *parinfo;
-	int64_t retval;
-	int64_t fd, pid;
-	process *procinfo;
-	filedescriptor *fdinfo;
-
-	GET_PARAM(pgevent, 2, fd, int64_t);
-	GET_PARAM(pgevent, 1, pid, int64_t);
-	GET_PARAM(pgevent, 0, retval, int64_t);
-
-	procinfo = m_inspector->get_process(pid, false);
-	if (procinfo == NULL)
-	{
-		//TRACE_DEBUG("couldn't find process");
-		return;
-	}
-
-	fdinfo = procinfo->get_fd(fd);
-	if (fdinfo == NULL)
-	{
-		//TRACE_DEBUG("couldn't find connection");
-		return;
-	}
-
-	if (fdinfo->m_flags & filedescriptor::FLAGS_CLOSE_CANCELED)
-	{
-		TRACE_DEBUG("*** canceled close exit ***");
-		fdinfo->m_flags &= ~filedescriptor::FLAGS_CLOSE_CANCELED;
-		return;
-	}
-
-	if (retval != 0)
-	{
-		TRACE_DEBUG("close returned with: %ld", retval);
 		return;
 	}
 
@@ -878,7 +844,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 
 	case PPME_SYSCALL_CLOSE_X:
 		g_stats.m_n_close_x += 1;
-		parse_close_exit(pgevent);
+		//parse_close_exit(pgevent);
 		break;
 
 	case PPME_SYSCALL_PWRITE_X:
