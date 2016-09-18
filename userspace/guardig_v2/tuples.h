@@ -60,11 +60,12 @@ inline bool operator==(const ipv4tuple &a, const ipv4tuple &b)
 struct ipv4tupleHash {
 	size_t operator()(const ipv4tuple &tuple) const
 	{
-		const unsigned char* p = reinterpret_cast<const unsigned char*>( &tuple );
 		size_t h = 2166136261;
 
-		for (unsigned int i = 0; i < sizeof(tuple); ++i)
-			h = (h * 16777619) ^ p[i];
+		h = (h * 16777619) ^ tuple.m_sip;
+		h = (h * 16777619) ^ tuple.m_dip;
+		h = (h * 16777619) ^ tuple.m_sport;
+		h = (h * 16777619) ^ tuple.m_dport;
 
 		return h;
 	}
