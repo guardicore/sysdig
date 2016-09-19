@@ -128,7 +128,7 @@ process *guardig::get_process(int64_t pid, bool query_os)
 		scap_threadinfo* scap_proc = NULL;
 		process newproc;
 
-		scap_proc = scap_proc_get(m_capture, pid, false);
+		scap_proc = scap_proc_get_guardig(m_capture, pid);
 
 		if(scap_proc)
 		{
@@ -138,10 +138,14 @@ process *guardig::get_process(int64_t pid, bool query_os)
 
 			//
 			// Get parent information.
-			// The ptid is a thread in the parent process (and not in the current process),
-			// because the function was called with a PID and not a tid.
+			// scap_proc_get_guardig is more efficient, but as far as I know, ptid can be a thread
+			// and not a process so we won't find it directly in /proc.
+			// This is why we fallback to scap_proc_get in case scap_proc_get_guardig fails.
 			//
-			scap_parent = scap_proc_get(m_capture, scap_proc->ptid, false);
+			scap_parent = scap_proc_get_guardig(m_capture, scap_proc->ptid);
+			if (scap_parent == NULL)
+				scap_parent = scap_proc_get(m_capture, scap_proc->ptid, false);
+
 			if (scap_parent)
 			{
 				newproc.m_ppid = scap_parent->pid;

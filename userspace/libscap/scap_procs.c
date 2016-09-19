@@ -886,6 +886,30 @@ void scap_proc_free_table(scap_t* handle)
 	}
 }
 
+/*
+ * This function replaces the scap_proc_get in the guardig scenario.
+ * The original function scap_proc_get is not efficient, because it is meant to return a thread_info and not
+ * a process info, therefore enumerating all /proc/ directory and /proc/x/tasks for each process.
+ */
+struct scap_threadinfo* scap_proc_get_guardig(scap_t* handle, int64_t pid)
+{
+	struct scap_threadinfo* procinfo = NULL;
+	struct scap_ns_socket_list* sockets_by_ns = (void *)-1; // Don't scan sockets
+	char procdirname[SCAP_MAX_PATH_SIZE];
+	int32_t res = SCAP_SUCCESS;
+
+	snprintf(procdirname, sizeof(procdirname), "%s/proc", scap_get_host_root());
+
+	res = scap_proc_add_from_proc(handle, pid, -1, pid, procdirname, &sockets_by_ns, &procinfo, handle->m_lasterr);
+	if(res != SCAP_SUCCESS)
+	{
+		printf("scap_proc_get_guardig: failed to find process in /proc\n");
+		return NULL;
+	}
+
+	return procinfo;
+}
+
 struct scap_threadinfo* scap_proc_get(scap_t* handle, int64_t tid, bool scan_sockets)
 {
 #if !defined(HAS_CAPTURE)
