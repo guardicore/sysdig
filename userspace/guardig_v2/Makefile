@@ -12,7 +12,7 @@ all: guardig guardig_no_prints
 	@echo done
 
 guardig:
-	g++ ${FLAGS} ${INCLUDE} ${DEFINE} -DPRINT_REPORTS ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o $@ 
+	g++ ${FLAGS} ${INCLUDE} ${DEFINE} -DPRINT_REPORTS -DPRINT_COLORS ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o $@ 
 
 guardig_no_prints:
 	g++ ${FLAGS} ${INCLUDE} ${DEFINE} ${SRC_PATH}/*.cpp -L${SCAP_PATH} -L${ZLIB_PATH} -lscap -lz -o $@

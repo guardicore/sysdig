@@ -11,6 +11,19 @@
 #include "process.h"
 #include "defs.h"
 
+#ifdef PRINT_COLORS
+#define RESET_COLOR "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
+char g_colors[][10] = {KRED, KGRN, KYEL, KBLU, KMAG, KCYN, KWHT};
+uint32_t connection::color_idx = 0;
+#endif
 
 connection *filedescriptor::add_connection(connection &conninfo)
 {
@@ -110,7 +123,17 @@ void connection::print(bool with_volume)
 	char sip_buf[20], dip_buf[20];
 	const char *proto, *type;
 
-	m_printed_creation = true;
+	if (!m_printed_creation)
+	{
+		m_printed_creation = true;
+
+#ifdef PRINT_COLORS
+		//
+		// choose color
+		//
+		m_color = color_idx++ % (sizeof(g_colors) / sizeof(g_colors[0]));
+#endif
+	}
 
 	if (m_fdinfo == NULL || m_fdinfo->m_procinfo == NULL)
 	{
@@ -141,20 +164,34 @@ void connection::print(bool with_volume)
 
 	if (with_volume)
 	{
+#ifdef PRINT_COLORS
+		printf("%s", g_colors[m_color]);
+#endif
 		printf("V %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d %lu %lu\n",
-							m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
-							m_fdinfo->m_fd, 1 /* threads */, type, proto, m_fdinfo->m_procinfo->m_exe.c_str(),
-							m_fdinfo->m_procinfo->m_comm.c_str(), m_fdinfo->m_procinfo->m_ppid, m_fdinfo->m_procinfo->m_pcomm.c_str(),
-							sip_buf, m_conntuple.m_sport, dip_buf, m_conntuple.m_dport, m_fdinfo->m_procinfo->m_uid,
-							m_sent_bytes, m_recv_bytes);
+				m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
+				m_fdinfo->m_fd, 1 /* threads */, type, proto, m_fdinfo->m_procinfo->m_exe.c_str(),
+				m_fdinfo->m_procinfo->m_comm.c_str(), m_fdinfo->m_procinfo->m_ppid, m_fdinfo->m_procinfo->m_pcomm.c_str(),
+				sip_buf, m_conntuple.m_sport, dip_buf, m_conntuple.m_dport, m_fdinfo->m_procinfo->m_uid,
+				m_sent_bytes, m_recv_bytes);
+#ifdef PRINT_COLORS
+		printf(RESET_COLOR);
+		fflush(stdout);
+#endif
 	}
 	else
 	{
+#ifdef PRINT_COLORS
+		printf("%s", g_colors[m_color]);
+#endif
 		printf("C %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d\n",
-							m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
-							m_fdinfo->m_fd, 1 /* threads */, type, proto, m_fdinfo->m_procinfo->m_exe.c_str(),
-							m_fdinfo->m_procinfo->m_comm.c_str(), m_fdinfo->m_procinfo->m_ppid, m_fdinfo->m_procinfo->m_pcomm.c_str(),
-							sip_buf, m_conntuple.m_sport, dip_buf, m_conntuple.m_dport, m_fdinfo->m_procinfo->m_uid);
+				m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
+				m_fdinfo->m_fd, 1 /* threads */, type, proto, m_fdinfo->m_procinfo->m_exe.c_str(),
+				m_fdinfo->m_procinfo->m_comm.c_str(), m_fdinfo->m_procinfo->m_ppid, m_fdinfo->m_procinfo->m_pcomm.c_str(),
+				sip_buf, m_conntuple.m_sport, dip_buf, m_conntuple.m_dport, m_fdinfo->m_procinfo->m_uid);
+#ifdef PRINT_COLORS
+		printf(RESET_COLOR);
+		fflush(stdout);
+#endif
 	}
 }
 

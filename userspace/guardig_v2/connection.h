@@ -49,6 +49,10 @@ public:
 		m_recv_bytes = 0;
 		m_fdinfo = NULL;
 		m_printed_creation = false;
+
+#ifdef PRINT_COLORS
+		m_color = 0;
+#endif
 	}
 
 	void print(bool with_volume=false);
@@ -73,6 +77,11 @@ public:
 	bool m_printed_creation;
 
 	filedescriptor *m_fdinfo;
+
+#ifdef PRINT_COLORS
+	static uint32_t color_idx;
+	uint32_t m_color;
+#endif
 };
 
 
