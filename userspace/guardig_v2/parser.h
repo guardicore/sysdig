@@ -42,19 +42,26 @@ private:
 
 	bool reset(guardig_evt *evt);
 
-	connection *add_connection_from_event(process *procinfo, guardig_evt *pgevent);
+	connection *add_connection_from_event(process *procinfo, 
+											guardig_evt *pgevent,
+											uint8_t *tuple_data,
+											int64_t res,  
+											int64_t fd,
+											uint16_t proto);
 
 	//void parse_socket_exit(guardig_evt *pgevent);
 	//void parse_bind_exit(guardig_evt *pgevent);
 	void parse_connect_exit(guardig_evt *pgevent);
 	void parse_accept_exit(guardig_evt *pgevent);
 	void parse_send_exit(guardig_evt *pgevent);
+	void parse_sendmmsg_exit(guardig_evt *pgevent);
 	void parse_recv_exit(guardig_evt *pgevent);
 	void parse_clone_exit(guardig_evt *evt);
 	void parse_execve_exit(guardig_evt *pgevent);
 	void parse_thread_exit(guardig_evt *pgevent);
 	void parse_close_enter(guardig_evt *pgevent);
 	void parse_close_exit(guardig_evt *pgevent);
+	void parse_rw(bool is_inbound, uint8_t *tuple_data, uint64_t rw_size, guardig_evt *pgevent, uint32_t guardig_generic_offset);
 	//
 	// Temporary storage to avoid memory allocation
 	//

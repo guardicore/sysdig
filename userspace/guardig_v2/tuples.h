@@ -38,6 +38,12 @@ typedef union _ipv4tuple
 	};
 	uint8_t m_all[12]; ///< The fields as a raw array ob bytes. Used for hashing.
 
+	inline bool is_valid()
+	{
+		return (m_sip != 0 && m_dip != 0 &&
+				m_sport != 0 && m_dport != 0);
+	}
+
 	inline void get_inverse_tuple(_ipv4tuple &inverse)
 	{
 		inverse.m_sip = m_dip;

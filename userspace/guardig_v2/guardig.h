@@ -26,6 +26,7 @@ public:
 	uint64_t m_n_close_e;
 	uint64_t m_n_close_x;
 	uint64_t m_n_send;
+	uint64_t m_n_sendmmsg;
 	uint64_t m_n_recv;
 };
 

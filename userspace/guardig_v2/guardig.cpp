@@ -58,7 +58,7 @@ uint32_t interesting_events[] =
 		//PPME_PROCEXIT_1_X,
 
 		////PPME_SOCKET_SOCKET_E,
-		PPME_SOCKET_SOCKET_X,
+		//PPME_SOCKET_SOCKET_X,
 		////PPME_SOCKET_SEND_E,
 		PPME_SOCKET_SEND_X,
 		////PPME_SOCKET_RECV_E,
@@ -97,11 +97,11 @@ uint32_t interesting_events[] =
 		//PPME_SOCKET_BIND_E,
 		//PPME_SOCKET_BIND_X,
 		//PPME_SOCKET_SENDMSG_E,
-		//PPME_SOCKET_SENDMSG_X,
+		PPME_SOCKET_SENDMSG_X,
 		//PPME_SOCKET_SENDMMSG_E,
-		//PPME_SOCKET_SENDMMSG_X,
+		PPME_SOCKET_SENDMMSG_X,
 		//PPME_SOCKET_RECVMSG_E,
-		//PPME_SOCKET_RECVMSG_X,
+		PPME_SOCKET_RECVMSG_X,
 		//PPME_SOCKET_RECVMMSG_E,
 		//PPME_SOCKET_RECVMMSG_X
 };
@@ -331,10 +331,10 @@ int32_t main()
 					"--------\n"
 					"connect:\t%lu\n" "accept:\t\t%lu\n" "clone:\t\t%lu\n"
 					"execve:\t\t%lu\n" "procexit:\t%lu\n" "close_e:\t%lu\n"
-					"close_x:\t%lu\n" "send:\t\t%lu\n" "recv:\t\t%lu\n",
+					"close_x:\t%lu\n" "send:\t\t%lu\n" "sendmmsg:\t%lu\n" "recv:\t\t%lu\n",
 					g_stats.m_n_connect, g_stats.m_n_accept, g_stats.m_n_clone,
 					g_stats.m_n_execve, g_stats.m_n_procexit, g_stats.m_n_close_e,
-					g_stats.m_n_close_x, g_stats.m_n_send, g_stats.m_n_recv);
+					g_stats.m_n_close_x, g_stats.m_n_send, g_stats.m_n_sendmmsg, g_stats.m_n_recv);
 
 cleanup:
 	return 0;

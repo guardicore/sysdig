@@ -417,6 +417,73 @@ cleanup:
 }
 
 
+inline int f_guardig_generic(struct event_filler_arguments *args)
+{
+	char parent_comm[TASK_COMM_LEN] = "unknown";
+	pid_t parent_tgid = -1;
+	struct socket *sock;
+	short type = 0;
+	int res, err = 0;
+
+	/*
+	 * Get the socket from the fd
+	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
+	 */
+	sock = sockfd_lookup(args->fd, &err);
+
+	if (likely(sock))
+	{
+		type = sock->type;
+		sockfd_put(sock);
+	}
+
+	/* PT_FD */
+	res = val_to_ring(args, (unsigned long)args->fd, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_INT16 */
+	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	if (current->parent != NULL)
+	{
+		// FIXME: am I allowed to touch current->parent without locking?
+		parent_tgid = current->parent->tgid;
+		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
+		parent_comm[sizeof(parent_comm) - 1] = '\0';
+	}
+
+	/* PT_PID */
+	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_CHARBUF */
+	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	/* PT_UID */
+	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
+	if (res != PPM_SUCCESS)
+		return res;
+
+	return PPM_SUCCESS;
+}
+
+
 static int f_sys_generic(struct event_filler_arguments *args)
 {
 	int res;
@@ -695,11 +762,7 @@ static int f_sys_read_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 	    return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -766,11 +829,7 @@ static int f_sys_write_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 	    return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -2055,11 +2114,6 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 	struct sockaddr __user *usrsockaddr;
 	struct sockaddr_storage address;
 	int err = 0;
-	pid_t parent_tgid = -1;
-	char parent_comm[TASK_COMM_LEN] = "unknown";
-	struct socket *sock;
-	short type = 0;
-	u8 is_connected = 1;
 
 	/*
 	 * Retrieve the FD. It will be used for dynamic snaplen calculation.
@@ -2147,7 +2201,6 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 			// sendto with a none-NULL dest address, the sendto system actually ignores the dest address,
 			// but we won't
 			//
-			is_connected = 0;
 			size = fd_to_socktuple(args->fd,
 				(struct sockaddr *)&address,
 				val,
@@ -2164,7 +2217,6 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 		 * It's proabably a regular send and the address is not an argument.
 		 * Just get the tuple from the socket.
 		 */
-		is_connected = 1;
 		size = fd_to_socktuple(args->fd,
 				NULL,
 				0,
@@ -2185,63 +2237,8 @@ static int f_sys_sendto_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	/*
-	 * Get the socket from the fd
-	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
-	 */
-	sock = sockfd_lookup(args->fd, &err);
-
-	if (likely(sock))
-	{
-		type = sock->type;
-		sockfd_put(sock);
-	}
-
-	res = val_to_ring(args, args->fd, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	/* PT_PID */
-	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_INT16 */
-	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_CHARBUF */
-	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	if (current->parent != NULL)
-	{
-		// FIXME: am I allowed to touch current->parent without locking?
-		parent_tgid = current->parent->tgid;
-		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
-		parent_comm[sizeof(parent_comm) - 1] = '\0';
-	}
-
-	/* PT_PID */
-	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_CHARBUF */
-	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_UID */
-	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_UINT8 */
-	res = val_to_ring(args, (unsigned long)is_connected, 0, false, 0);
-	if (res != PPM_SUCCESS)
 		return res;
 
 	return add_sentinel(args);
@@ -2320,11 +2317,7 @@ static int f_sys_send_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -2467,17 +2460,11 @@ static int f_sys_recv_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 	    return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	res = val_to_ring(args, current->tgid, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	if (likely(res == PPM_SUCCESS))
 		return add_sentinel(args);
-	return res;
 }
 
 static int f_sys_recvfrom_x(struct event_filler_arguments *args)
@@ -2492,11 +2479,6 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	struct sockaddr_storage address;
 	int addrlen;
 	int err = 0;
-	pid_t parent_tgid = -1;
-	char parent_comm[TASK_COMM_LEN] = "unknown";
-	struct socket *sock;
-	short type = 0;
-	u8 is_connected = 1;
 
 	/*
 	 * Push the common params to the ring
@@ -2562,7 +2544,6 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 				// sendto with a none-NULL dest address, the sendto system actually ignores the dest address,
 				// but we won't
 				//
-				is_connected = 0;
 				size = fd_to_socktuple(fd,
 					(struct sockaddr *)&address,
 					addrlen,
@@ -2580,7 +2561,6 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 		 * It's proabably a regular recv and the address is not an argument.
 		 * Just get the tuple from the socket.
 		 */
-		is_connected = 1;
 		size = fd_to_socktuple(fd,
 				NULL,
 				0,
@@ -2601,63 +2581,13 @@ static int f_sys_recvfrom_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	/*
-	 * Get the socket from the fd
-	 * NOTE: sockfd_lookup() locks the socket, so we don't need to worry when we dig in it
-	 */
-	sock = sockfd_lookup(fd, &err);
+	//
+	// set args->fd for f_guardig_generic.
+	//
+	args->fd = fd;
 
-	if (likely(sock))
-	{
-		type = sock->type;
-		sockfd_put(sock);
-	}
-
-	res = val_to_ring(args, fd, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	/* PT_PID */
-	res = val_to_ring(args, (unsigned long)current->tgid, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_INT16 */
-	res = val_to_ring(args, (unsigned long)type, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_CHARBUF */
-	res = val_to_ring(args, (unsigned long)current->comm, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	if (current->parent != NULL)
-	{
-		// FIXME: am I allowed to touch current->parent without locking?
-		parent_tgid = current->parent->tgid;
-		strncpy(parent_comm, current->parent->comm, sizeof(parent_comm));
-		parent_comm[sizeof(parent_comm) - 1] = '\0';
-	}
-
-	/* PT_PID */
-	res = val_to_ring(args, (unsigned long)parent_tgid, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_CHARBUF */
-	res = val_to_ring(args, (unsigned long)parent_comm, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_UID */
-	res = val_to_ring(args, (unsigned long)current_uid().val, 0, false, 0);
-	if (res != PPM_SUCCESS)
-		return res;
-
-	/* PT_UINT8 */
-	res = val_to_ring(args, (unsigned long)is_connected, 0, false, 0);
-	if (res != PPM_SUCCESS)
 		return res;
 
 	return add_sentinel(args);
@@ -2835,6 +2765,22 @@ static int f_sys_sendmsg_x(struct event_filler_arguments *args)
 #else
 	struct msghdr mh;
 #endif
+	int addrlen = 0;
+	int err = 0;
+	struct sockaddr __user *usrsockaddr = NULL;
+	struct sockaddr_storage address;
+	char *targetbuf = args->str_storage;
+	u16 size = 0;
+
+	/*
+	 * fd
+	 */
+	if (!args->is_socketcall)
+		syscall_get_arguments(current, args->regs, 0, 1, &val);
+	else
+		val = args->socketcall_args[0];
+
+	args->fd = val;
 
 	/*
 	 * res
@@ -2868,6 +2814,12 @@ static int f_sys_sendmsg_x(struct event_filler_arguments *args)
 		res = parse_readv_writev_bufs(args, iov, iovcnt, args->consumer->snaplen, PRB_FLAG_PUSH_DATA | PRB_FLAG_IS_WRITE);
 		if (unlikely(res != PPM_SUCCESS))
 			return res;
+
+		/*
+		 * tuple
+		 */
+		usrsockaddr = (struct sockaddr __user *)mh.msg_name;
+		addrlen = mh.msg_namelen;
 #ifdef CONFIG_COMPAT
 	} else {
 		if (unlikely(ppm_copy_from_user(&compat_mh, (const void __user *)compat_ptr(val), sizeof(compat_mh))))
@@ -2879,8 +2831,57 @@ static int f_sys_sendmsg_x(struct event_filler_arguments *args)
 		res = compat_parse_readv_writev_bufs(args, compat_iov, iovcnt, args->consumer->snaplen, PRB_FLAG_PUSH_DATA | PRB_FLAG_IS_WRITE);
 		if (unlikely(res != PPM_SUCCESS))
 			return res;
+
+		/*
+		 * tuple
+		 */
+		usrsockaddr = (struct sockaddr __user *)compat_ptr(compat_mh.msg_name);
+		addrlen = compat_mh.msg_namelen;
 	}
 #endif
+
+	if (usrsockaddr != NULL && addrlen != 0) {
+		/*
+		 * Copy the address
+		 */
+		err = addr_to_kernel(usrsockaddr, addrlen, (struct sockaddr *)&address);
+		if (likely(err >= 0)) {
+			/*
+			 * Convert the fd into socket endpoint information
+			 */
+			size = fd_to_socktuple(args->fd,
+				(struct sockaddr *)&address,
+				addrlen,
+				true,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
+		}
+	}
+
+	if (size == 0)
+	{
+		size = fd_to_socktuple(args->fd,
+				NULL,
+				0,
+				false,
+				false,
+				targetbuf,
+				STR_STORAGE_SIZE);
+	}
+
+	/* Copy the endpoint info into the ring */
+	res = val_to_ring(args,
+				(uint64_t)(unsigned long)targetbuf,
+				size,
+				false,
+				0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	res = f_guardig_generic(args);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
 
 	return add_sentinel(args);
 }
@@ -3004,9 +3005,17 @@ static int f_sys_sendmmsg_e(struct event_filler_arguments *args)
         /*
         * Copy the address of current message tuples + msg size
         */
+        if (usrsockaddr != NULL && addrlen != 0)
+        {
         err = addr_to_kernel(usrsockaddr, addrlen, (struct sockaddr *)&address);
-        if (likely(err >= 0)) {
-            u16 *size_p = (u16 *)(targetbuf + targetbuf_offset);
+			if (likely(err >= 0))
+			{
+				u16 *size_p;
+
+				if (STR_STORAGE_SIZE - targetbuf_offset < sizeof(size_p))
+					return PPM_FAILURE_BUFFER_FULL;
+
+				size_p = (u16 *)(targetbuf + targetbuf_offset);
             targetbuf_offset += sizeof(u16);
             
             /*
@@ -3021,10 +3030,14 @@ static int f_sys_sendmmsg_e(struct event_filler_arguments *args)
                                       STR_STORAGE_SIZE - targetbuf_offset);
             
             targetbuf_offset += (*size_p);
+
+				if (STR_STORAGE_SIZE - targetbuf_offset < sizeof(uint64_t))
+					return PPM_FAILURE_BUFFER_FULL;
             
             *(uint64_t *)(targetbuf + targetbuf_offset) = (uint64_t)(unsigned long)iovcnt;
             targetbuf_offset += sizeof(uint64_t);
         }
+    }
     }
     
     /*
@@ -3036,6 +3049,9 @@ static int f_sys_sendmmsg_e(struct event_filler_arguments *args)
                       false,
                       0);
     
+    if (unlikely(res != PPM_SUCCESS))
+    	return res;
+
 	return add_sentinel(args);
 }
 
@@ -3043,6 +3059,21 @@ static int f_sys_sendmmsg_x(struct event_filler_arguments *args)
 {
 	int res;
 	int64_t retval;
+	unsigned long val;
+	struct mmsghdr mmh;
+	char *targetbuf = args->str_storage;
+	size_t targetbuf_offset = 0;
+#ifdef CONFIG_COMPAT
+	struct compat_mmsghdr compat_mmh;
+#endif
+	unsigned long iovcnt = 0;
+	unsigned int vlen, flags, hdr_index = 0;
+	int addrlen;
+	int err = 0;
+	struct sockaddr __user *usrsockaddr;
+	struct sockaddr_storage address;
+	u16 size = 0;
+	u16 *size_p = NULL;
 
 	/*
 	 * res
@@ -3051,7 +3082,165 @@ static int f_sys_sendmmsg_x(struct event_filler_arguments *args)
 	res = val_to_ring(args, retval, 0, false, 0);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
+
+	/*
+	 * fd
+	 */
+	if (!args->is_socketcall)
+		syscall_get_arguments(current, args->regs, 0, 1, &val);
+	else
+		val = args->socketcall_args[0];
+
+	args->fd = val;
+
+	/*
+	 * Retrieve the message headers array pointer
+	 */
+	if (!args->is_socketcall) {
+		syscall_get_arguments(current, args->regs, 2, 1, &val);
+		vlen = (unsigned int)val;
+		syscall_get_arguments(current, args->regs, 3, 1, &val);
+		flags = (unsigned int)val;
+		syscall_get_arguments(current, args->regs, 1, 1, &val);
+	} else {
+		val = args->socketcall_args[1];
+		vlen = (unsigned int)args->socketcall_args[2];
+		flags = (unsigned int)args->socketcall_args[3];
+	}
+
+	/*
+	 * vlen
+	 */
+	res = val_to_ring(args, vlen, 0, false, 0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	/*
+	 * iterate all mmsghdr structures in the array and build a list of
+	 * [msg_tuple,msg_len] inside the targetbuf before copying it into the ring
+	 * buffer.
+	 */
+	for (hdr_index = 0; hdr_index < vlen; ++hdr_index) {
+		iovcnt = 0;
+
+		#ifdef CONFIG_COMPAT
+		if (!args->compat) {
+		#endif
+			size_t iov_index = 0;
+			struct iovec iov_item = { };
+
+			if (unlikely(ppm_copy_from_user(&mmh, (const void __user *)(val + (sizeof(mmh) * hdr_index)), sizeof(mmh)))) {
+				return PPM_FAILURE_INVALID_USER_MEMORY;
+			}
+
+			/*
+			 * get message size and address
+			 */
+			for (iov_index = 0; iov_index < mmh.msg_hdr.msg_iovlen; ++iov_index)
+			{
+				if (unlikely(ppm_copy_from_user(&iov_item, (const void __user *)(mmh.msg_hdr.msg_iov + (sizeof(iov_item) * iov_index)), sizeof(iov_item)))) {
+					return PPM_FAILURE_INVALID_USER_MEMORY;
+				}
+
+				iovcnt += iov_item.iov_len;
+			}
+			usrsockaddr = (struct sockaddr __user *)mmh.msg_hdr.msg_name;
+			addrlen = mmh.msg_hdr.msg_namelen;
+
+		#ifdef CONFIG_COMPAT
+		} else {
+			size_t iov_index = 0;
+			struct iovec iov_item = { };
+
+			if (unlikely(ppm_copy_from_user(&compat_mmh, (const void __user *)compat_ptr(val + (sizeof(compat_mmh) * hdr_index)), sizeof(compat_mmh)))) {
+				return PPM_FAILURE_INVALID_USER_MEMORY;
+			}
+
+			/*
+			 * get message size and address
+			 */
+			for (iov_index = 0; iov_index < compat_mmh.msg_hdr.msg_iovlen; ++iov_index) {
+				if (unlikely(ppm_copy_from_user(&iov_item, (const void __user *)compat_ptr(compat_mmh.msg_hdr.msg_iov + (sizeof(iov_item) * iov_index)), sizeof(iov_item)))) {
+					return PPM_FAILURE_INVALID_USER_MEMORY;
+				}
     
+				iovcnt += iov_item.iov_len;
+			}
+			usrsockaddr = (struct sockaddr __user *)compat_ptr(compat_mmh.msg_hdr.msg_name);
+			addrlen = compat_mmh.msg_hdr.msg_namelen;
+		}
+		#endif
+
+		/*
+		* Copy the address of current message tuples + msg size
+		*/
+		if (STR_STORAGE_SIZE - targetbuf_offset < sizeof(size))
+			return PPM_FAILURE_BUFFER_FULL;
+
+		size = 0;
+		size_p = (u16 *)(targetbuf + targetbuf_offset);
+		targetbuf_offset += sizeof(u16);
+
+		if (usrsockaddr != NULL && addrlen != 0)
+		{
+			err = addr_to_kernel(usrsockaddr, addrlen, (struct sockaddr *)&address);
+			if (likely(err >= 0))
+			{
+				/*
+				* Convert the fd into socket endpoint information
+				*/
+				// FIXME: this is not safe - need to check that we're not overflowing STR_STORAGE_SIZE
+				size = fd_to_socktuple(args->fd,
+						  (struct sockaddr *)&address,
+						  addrlen,
+						  true,
+						  false,
+						  targetbuf + targetbuf_offset,
+						  STR_STORAGE_SIZE - targetbuf_offset);
+			}
+		}
+
+		if (size == 0)
+		{
+			/*
+			 * The address was not part of the iovec, probably a connected socket.
+			 */
+			// FIXME: this is not safe - need to check that we're not overflowing STR_STORAGE_SIZE
+			size = fd_to_socktuple(args->fd,
+					  NULL,
+					  0,
+					  false,
+					  false,
+					  targetbuf + targetbuf_offset,
+					  STR_STORAGE_SIZE - targetbuf_offset);
+		}
+
+		*size_p = size;
+		targetbuf_offset += size;
+
+		if (STR_STORAGE_SIZE - targetbuf_offset < sizeof(uint64_t))
+			return PPM_FAILURE_BUFFER_FULL;
+
+		*(uint64_t *)(targetbuf + targetbuf_offset) = (uint64_t)(unsigned long)iovcnt;
+		targetbuf_offset += sizeof(uint64_t);
+	}
+
+	/*
+	 * msgs
+	 */
+	res = val_to_ring(args,
+					  (uint64_t)(unsigned long)targetbuf,
+					  targetbuf_offset,
+					  false,
+					  0);
+
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
+
+	res = f_guardig_generic(args);
+	if (unlikely(res != PPM_SUCCESS))
+	    return res;
+
 	return add_sentinel(args);
 }
 
@@ -3147,10 +3336,6 @@ static int f_sys_recvmsg_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	/*
-	 * tuple
-	 */
-	if (retval >= 0) {
 		/*
 		 * Get the fd
 		 */
@@ -3159,6 +3344,11 @@ static int f_sys_recvmsg_x(struct event_filler_arguments *args)
 			fd = (int)val;
 		} else
 			fd = (int)args->socketcall_args[0];
+
+	/*
+	 * tuple
+	 */
+	if (retval >= 0) {
 
 		/*
 		 * Get the address
@@ -3183,8 +3373,22 @@ static int f_sys_recvmsg_x(struct event_filler_arguments *args)
 					targetbuf,
 					STR_STORAGE_SIZE);
 			}
+			}
 		}
+
+	if (size == 0)
+	{
+		size = fd_to_socktuple(fd,
+				NULL,
+				0,
+				false,
+				true,
+				targetbuf,
+				STR_STORAGE_SIZE);
 	}
+
+	if (unlikely(size == 0))
+		return PPM_FAILURE_GUARDIC_SILENT;
 
 	/* Copy the endpoint info into the ring */
 	res = val_to_ring(args,
@@ -3192,6 +3396,15 @@ static int f_sys_recvmsg_x(struct event_filler_arguments *args)
 			    size,
 			    false,
 			    0);
+	if (unlikely(res != PPM_SUCCESS))
+		return res;
+
+	//
+	// Update the fd before passing args to guardig_generic.
+	//
+	args->fd = fd;
+
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -3966,11 +4179,7 @@ static int f_sys_readv_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 	    return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -4095,11 +4304,7 @@ static int f_sys_writev_pwritev_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 	    return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
@@ -4193,11 +4398,7 @@ static int f_sys_preadv_x(struct event_filler_arguments *args)
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 
-	res = val_to_ring(args, args->fd, 0, false, 0);
-	if (unlikely(res != PPM_SUCCESS))
-		return res;
-
-	res = val_to_ring(args, current->tgid, 0, false, 0);
+	res = f_guardig_generic(args);
 	if (unlikely(res != PPM_SUCCESS))
 		return res;
 

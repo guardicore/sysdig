@@ -9,22 +9,9 @@ guardig_evt_param *guardig_evt::get_param(uint32_t id)
 		m_flags |= (uint32_t)guardig_evt::SINSP_EF_PARAMS_LOADED;
 	}
 
-	if (id < PPM_MAX_EVENT_PARAMS)
+	if (id < m_nparams)
 		return &m_params[id];
 	else
 		return NULL;
-}
-
-const struct ppm_param_info* guardig_evt::get_param_info(uint32_t id)
-{
-	if((m_flags & guardig_evt::SINSP_EF_PARAMS_LOADED) == 0)
-	{
-		load_params();
-		m_flags |= (uint32_t)guardig_evt::SINSP_EF_PARAMS_LOADED;
-	}
-
-	ASSERT(id < m_info->nparams);
-
-	return &(m_info->params[id]);
 }
 

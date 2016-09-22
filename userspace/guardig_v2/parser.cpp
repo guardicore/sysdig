@@ -83,12 +83,14 @@ bool parse_packed_tuple(unsigned char *packed_data, ipv4tuple *conntuple)
 }
 
 
-connection *guardig_parser::add_connection_from_event(process *procinfo, guardig_evt *pgevent)
+connection *guardig_parser::add_connection_from_event(process *procinfo, 
+														guardig_evt *pgevent,
+														uint8_t *tuple_data,
+														int64_t res,  
+														int64_t fd,
+														uint16_t proto)
 {
 	guardig_evt_param *parinfo;
-	uint8_t* packed_data;
-	int64_t fd, res;
-	uint16_t proto;
 	filedescriptor *fdinfo;
 	connection newconn;
 	connection *conninfo;
@@ -98,35 +100,58 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 	case PPME_SOCKET_ACCEPT4_5_X:
 	case PPME_SOCKET_ACCEPT_5_X:
 		newconn.m_evt_name = "accept";
-		GET_PARAM(pgevent, 0, fd, int64_t);
-		GET_PARAM(pgevent, 5, proto, uint16_t);
-		GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-		res = fd;
 		break;
 	case PPME_SOCKET_CONNECT_X:
 		newconn.m_evt_name = "connect";
-		GET_PARAM(pgevent, 2, fd, int64_t);
-		GET_PARAM(pgevent, 3, proto, uint16_t);
-		GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
-		GET_PARAM(pgevent, 0, res, uint64_t);
+		break;
+	case PPME_SYSCALL_READV_X:
+		newconn.m_evt_name = "readv";
+		break;
+	case PPME_SYSCALL_PREADV_X:
+		newconn.m_evt_name = "preadv";
+		break;
+	case PPME_SOCKET_RECVMSG_X:
+		newconn.m_evt_name = "recvmsg";
+		break;
+	case PPME_SOCKET_RECV_X:
+		newconn.m_evt_name = "recv";
 		break;
 	case PPME_SOCKET_RECVFROM_X:
 		newconn.m_evt_name = "recvfrom";
-		GET_PARAM(pgevent, 3, fd, int64_t);
-		GET_PARAM(pgevent, 5, proto, uint16_t);
-		GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
-		GET_PARAM(pgevent, 0, res, int64_t);
+		break;
+	case PPME_SYSCALL_READ_X:
+		newconn.m_evt_name = "read";
+		break;
+	case PPME_SYSCALL_PREAD_X:
+		newconn.m_evt_name = "pread";
+		break;
+	case PPME_SOCKET_SEND_X:
+		newconn.m_evt_name = "send";
 		break;
 	case PPME_SOCKET_SENDTO_X:
 		newconn.m_evt_name = "sendto";
-		GET_PARAM(pgevent, 3, fd, int64_t);
-		GET_PARAM(pgevent, 5, proto, uint16_t);
-		GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
-		GET_PARAM(pgevent, 0, res, int64_t);
+		break;
+	case PPME_SOCKET_SENDMSG_X:
+		newconn.m_evt_name = "sendmsg";
+		break;
+	case PPME_SOCKET_SENDMMSG_X:
+		newconn.m_evt_name = "sendmmsg";
+		break;
+	case PPME_SYSCALL_WRITE_X:
+		newconn.m_evt_name = "write";
+		break;
+	case PPME_SYSCALL_WRITEV_X:
+		newconn.m_evt_name = "writev";
+		break;
+	case PPME_SYSCALL_PWRITEV_X:
+		newconn.m_evt_name = "pwritev";
+		break;
+	case PPME_SYSCALL_PWRITE_X:
+		newconn.m_evt_name = "pwrite";
 		break;
 	default:
 		ASSERT(false);
-		break;
+		return NULL;
 	}
 
 	{
@@ -136,7 +161,7 @@ connection *guardig_parser::add_connection_from_event(process *procinfo, guardig
 	newfd.m_proto = proto;
 	newfd.m_procinfo = procinfo;
 
-	if (!parse_packed_tuple(packed_data, &newconn.m_conntuple))
+	if (!parse_packed_tuple(tuple_data, &newconn.m_conntuple))
 		return NULL;
 
 	//
@@ -197,7 +222,9 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	process *procinfo;
+	uint8_t *packed_data;
 	int64_t pid, fd;
+	uint16_t proto;
 
 	if (!(pgevent->m_pevt->type == PPME_SOCKET_ACCEPT4_5_X ||
 		  pgevent->m_pevt->type == PPME_SOCKET_ACCEPT_5_X))
@@ -236,7 +263,9 @@ void guardig_parser::parse_accept_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 10, procinfo->m_uid, uint32_t);
 	}
 
-	add_connection_from_event(procinfo, pgevent);
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+	GET_PARAM(pgevent, 5, proto, uint16_t);
+	add_connection_from_event(procinfo, pgevent, packed_data, fd, fd, proto);
 
 cleanup:
 	return;
@@ -247,7 +276,9 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
 	process *procinfo;
-	int64_t pid, res;
+	uint8_t *packed_data;
+	int64_t pid, res, fd;
+	uint16_t proto;
 
 	GET_PARAM(pgevent, 0, res, uint64_t);
 
@@ -284,7 +315,121 @@ void guardig_parser::parse_connect_exit(guardig_evt *pgevent)
 		GET_PARAM(pgevent, 8, procinfo->m_uid, uint32_t);
 	}
 
-	add_connection_from_event(procinfo, pgevent);
+	GET_PARAM_BUFFER(pgevent, 1, packed_data, uint8_t*);
+	GET_PARAM(pgevent, 2, fd, int64_t);
+	GET_PARAM(pgevent, 3, proto, uint16_t);
+	add_connection_from_event(procinfo, pgevent, packed_data, res, fd, proto);
+
+cleanup:
+	return;
+}
+
+
+void guardig_parser::parse_rw(bool is_inbound, uint8_t *tuple_data, uint64_t rw_size, guardig_evt *pgevent, uint32_t guardig_generic_offset)
+{
+	guardig_evt_param *parinfo;
+	int64_t fd, res;
+	uint16_t proto;
+	pid_t pid;
+	process *procinfo;
+	filedescriptor *fdinfo;
+	connection *conninfo;
+	ipv4tuple conntuple, inverse_tuple;
+
+	GET_PARAM(pgevent, guardig_generic_offset, fd, int64_t);
+	GET_PARAM(pgevent, guardig_generic_offset+1, pid, int64_t);
+
+	procinfo = m_inspector->get_process(pid, true);
+	if (procinfo == NULL)
+	{
+		TRACE_DEBUG("process table is full");
+		return;
+	}
+
+	if (procinfo->m_uid == -1)
+	{
+		//
+		// We didn't see the process creation and didn't find it in /proc as well.
+		// Fill in the process details from the current event.
+		// Note: ATM I'm only supporting recv_from, because in other events I should've
+		// seen the connection before with connect / accept.
+		//
+		GET_PARAM_BUFFER(pgevent, guardig_generic_offset+3, procinfo->m_comm, char*);
+		GET_PARAM(pgevent, guardig_generic_offset+4, procinfo->m_ppid, int64_t);
+		GET_PARAM_BUFFER(pgevent, guardig_generic_offset+5, procinfo->m_pcomm, char*);
+		GET_PARAM(pgevent, guardig_generic_offset+6, procinfo->m_uid, uint32_t);
+	}
+
+	if (!parse_packed_tuple(tuple_data, &conntuple))
+		return;
+
+	//
+	// Update addresses if one of then was empty
+	//
+	m_inspector->m_network_interfaces.update_tuple(&conntuple);
+	if (!conntuple.is_valid())
+	{
+		//
+		// This case can happen if the socket was suddenly closed (by an RST for example).
+		// The read / write systemcall will succeed, but the call to sock->ops->getname in
+		// the kernel will fail becasue the socket is no longer connected hence leaving the tuple empty.
+		//
+		TRACE_DEBUG("conntuple is not valid. sip: %08x, dip: %08x, sport: %hd, dport: %hd",
+					conntuple.m_sip, conntuple.m_dip, conntuple.m_sport, conntuple.m_dport);
+		return;
+	}
+
+	conntuple.get_inverse_tuple(inverse_tuple);
+
+	fdinfo = procinfo->get_fd(fd);
+	if (fdinfo == NULL)
+	{
+		goto add_connection;
+	}
+
+	conninfo = fdinfo->get_connection(conntuple);
+	if (conninfo == NULL)
+		conninfo = fdinfo->get_connection(inverse_tuple);
+
+	if (conninfo == NULL)
+	{
+		goto add_connection;
+	}
+
+#ifdef PRINT_REPORTS
+	//
+	// Check if delayed print is necessary
+	//
+	if (!conninfo->m_printed_creation)
+	{
+		if (!procinfo->m_printed_exec)
+			procinfo->print();
+
+		if (conninfo->m_errorcode == -EINPROGRESS)
+			conninfo->m_errorcode = 0;
+
+		conninfo->print();
+	}
+#endif
+
+	if (is_inbound)
+		conninfo->m_recv_bytes += rw_size;
+	else
+		conninfo->m_sent_bytes += rw_size;
+
+	return;
+
+add_connection:
+	GET_PARAM(pgevent, guardig_generic_offset+2, proto, uint16_t);
+	GET_PARAM(pgevent, 0, res, int64_t);
+	conninfo = add_connection_from_event(procinfo, pgevent, tuple_data, res, fd, proto);
+	if (conninfo != NULL)
+	{
+		if (is_inbound)
+			conninfo->m_recv_bytes += rw_size;
+		else
+			conninfo->m_sent_bytes += rw_size;
+	}
 
 cleanup:
 	return;
@@ -294,14 +439,8 @@ cleanup:
 void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
-	int64_t fd, res;
-	pid_t pid;
-	process *procinfo;
-	filedescriptor *fdinfo;
-	connection *conninfo;
+	int64_t res;
 	uint8_t* packed_data;
-	ipv4tuple conntuple, inverse_tuple;
-	uint8_t is_connected = 1;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 
@@ -314,85 +453,53 @@ void guardig_parser::parse_send_exit(guardig_evt *pgevent)
 	}
 
 	GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
-	GET_PARAM(pgevent, 3, fd, int64_t);
-	GET_PARAM(pgevent, 4, pid, int64_t);
 
-	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X)
-	{
-		GET_PARAM(pgevent, 10, is_connected, uint8_t);
-	}
+	parse_rw(false, packed_data, (uint64_t)res, pgevent, 3);
 
-	procinfo = m_inspector->get_process(pid, true);
-	if (procinfo == NULL)
-	{
-		TRACE_DEBUG("process table is full");
-		return;
-	}
-
-	if (pgevent->m_pevt->type == PPME_SOCKET_SENDTO_X &&
-		procinfo->m_uid == -1)
-	{
-		//
-		// We didn't see the process creation and didn't find it in /proc as well.
-		// Fill in the process details from the current event.
-		// Note: ATM I'm only supporting recv_from, because in other events I should've
-		// seen the connection before with connect / accept.
-		//
-		GET_PARAM_BUFFER(pgevent, 6, procinfo->m_comm, char*);
-		GET_PARAM(pgevent, 7, procinfo->m_ppid, int64_t);
-		GET_PARAM_BUFFER(pgevent, 8, procinfo->m_pcomm, char*);
-		GET_PARAM(pgevent, 9, procinfo->m_uid, uint32_t);
-	}
-
-	if (!parse_packed_tuple(packed_data, &conntuple))
-		return;
-
-	//
-	// Update addresses if one of then was empty
-	//
-	m_inspector->m_network_interfaces.update_tuple(&conntuple);
-	conntuple.get_inverse_tuple(inverse_tuple);
-
-	fdinfo = procinfo->get_fd(fd);
-	if (fdinfo == NULL)
-	{
-		goto add_connection;
-	}
-
-	conninfo = fdinfo->get_connection(conntuple);
-	if (conninfo == NULL)
-		conninfo = fdinfo->get_connection(inverse_tuple);
-
-	if (conninfo == NULL)
-	{
-		goto add_connection;
-	}
-
-#ifdef PRINT_REPORTS
-	//
-	// Check if delayed print is necessary
-	//
-	if (!conninfo->m_printed_creation)
-	{
-		if (!procinfo->m_printed_exec)
-			procinfo->print();
-
-		if (conninfo->m_errorcode == -EINPROGRESS)
-			conninfo->m_errorcode = 0;
-
-		conninfo->print();
-	}
-#endif
-
-	conninfo->m_sent_bytes += res;
+cleanup:
 	return;
+}
 
-add_connection:
-	if (!is_connected)
+
+void guardig_parser::parse_sendmmsg_exit(guardig_evt *pgevent)
+{
+	guardig_evt_param *parinfo;
+	uint8_t *msgs_data, *msgs_data_end, *tuple_data;
+	uint16_t tuple_size = 0, msgs_data_len = 0;
+	uint64_t send_size, msg_cnt = 0;
+	int64_t res;
+
+	GET_PARAM(pgevent, 0, res, int64_t);
+
+	parinfo = pgevent->get_param(2);
+	if (parinfo == NULL ||
+		parinfo->m_len == 0)
 	{
-		conninfo = add_connection_from_event(procinfo, pgevent);
-		if (conninfo != NULL)
-			conninfo->m_sent_bytes += res;
+		ASSERT(false);
+		goto cleanup;
+	}
+	msgs_data = (uint8_t *)parinfo->m_val;
+	msgs_data_len = parinfo->m_len;
+	msgs_data_end = msgs_data + msgs_data_len;
+
+	//
+	// check that we're still in the msgs buffer and also parse only the msgs that
+	// were sent successfuly (res)
+	//
+	while (msgs_data < msgs_data_end && msg_cnt < res)
+	{
+		tuple_size = *((uint16_t *)msgs_data);
+		msgs_data += sizeof(uint16_t);
+
+		tuple_data = msgs_data;
+		msgs_data += tuple_size;
+
+		send_size = *((uint64_t *)msgs_data);
+		msgs_data += sizeof(uint64_t);
+
+		parse_rw(false, tuple_data, send_size, pgevent, 3);
+
+		msg_cnt++;
 	}
 
 cleanup:
@@ -403,14 +510,8 @@ cleanup:
 void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 {
 	guardig_evt_param *parinfo;
-	int64_t fd, res;
-	int64_t pid;
-	process *procinfo;
-	filedescriptor *fdinfo;
-	connection *conninfo;
+	int64_t res;
 	uint8_t* packed_data;
-	ipv4tuple conntuple, inverse_tuple;
-	uint8_t is_connected = 1;
 
 	GET_PARAM(pgevent, 0, res, int64_t);
 
@@ -422,86 +523,24 @@ void guardig_parser::parse_recv_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
-	GET_PARAM(pgevent, 3, fd, int64_t);
-	GET_PARAM(pgevent, 4, pid, int64_t);
-
-	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X)
+	switch(pgevent->m_pevt->type)
 	{
-		GET_PARAM(pgevent, 10, is_connected, uint8_t);
-	}
-
-	procinfo = m_inspector->get_process(pid, true);
-	if (procinfo == NULL)
-	{
-		TRACE_DEBUG("process table is full");
-		return;
-	}
-
-	if (pgevent->m_pevt->type == PPME_SOCKET_RECVFROM_X &&
-		procinfo->m_uid == -1)
-	{
-		//
-		// We didn't see the process creation and didn't find it in /proc as well.
-		// Fill in the process details from the current event.
-		// Note: ATM I'm only supporting recv_from, because in other events I should've
-		// seen the connection before with connect / accept.
-		//
-		GET_PARAM_BUFFER(pgevent, 6, procinfo->m_comm, char*);
-		GET_PARAM(pgevent, 7, procinfo->m_ppid, int64_t);
-		GET_PARAM_BUFFER(pgevent, 8, procinfo->m_pcomm, char*);
-		GET_PARAM(pgevent, 9, procinfo->m_uid, uint32_t);
-	}
-
-	if (!parse_packed_tuple(packed_data, &conntuple))
-		return;
-
-	//
-	// Update addresses if one of then was empty
-	//
-	m_inspector->m_network_interfaces.update_tuple(&conntuple);
-	conntuple.get_inverse_tuple(inverse_tuple);
-
-	fdinfo = procinfo->get_fd(fd);
-	if (fdinfo == NULL)
-	{
-		goto add_connection;
-	}
-
-	conninfo = fdinfo->get_connection(conntuple);
-	if (conninfo == NULL)
-		conninfo = fdinfo->get_connection(inverse_tuple);
-
-	if (conninfo == NULL)
-	{
-		goto add_connection;
-	}
-
-#ifdef PRINT_REPORTS
-	//
-	// Check if delayed print is necessary
-	//
-	if (!conninfo->m_printed_creation)
-	{
-		if (!procinfo->m_printed_exec)
-			procinfo->print();
-
-		if (conninfo->m_errorcode == -EINPROGRESS)
-			conninfo->m_errorcode = 0;
-
-		conninfo->print();
-	}
-#endif
-
-	conninfo->m_recv_bytes += res;
-	return;
-
-add_connection:
-	if (!is_connected)
-	{
-		conninfo = add_connection_from_event(procinfo, pgevent);
-		if (conninfo != NULL)
-			conninfo->m_recv_bytes += res;
+	case PPME_SYSCALL_READV_X:
+	case PPME_SYSCALL_PREADV_X:
+	case PPME_SOCKET_RECVMSG_X:
+		GET_PARAM_BUFFER(pgevent, 3, packed_data, uint8_t*);
+		parse_rw(true, packed_data, (uint64_t)res, pgevent, 4);
+		break;
+	case PPME_SYSCALL_READ_X:
+	case PPME_SYSCALL_PREAD_X:
+	case PPME_SOCKET_RECV_X:
+	case PPME_SOCKET_RECVFROM_X:
+		GET_PARAM_BUFFER(pgevent, 2, packed_data, uint8_t*);
+		parse_rw(true, packed_data, (uint64_t)res, pgevent, 3);
+		break;
+	default:
+		ASSERT(false);
+		break;
 	}
 
 cleanup:
@@ -839,8 +878,14 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_PWRITEV_X:
 	case PPME_SOCKET_SEND_X:
 	case PPME_SOCKET_SENDTO_X:
+	case PPME_SOCKET_SENDMSG_X:
 		g_stats.m_n_send += 1;
 		parse_send_exit(pgevent);
+		break;
+
+	case PPME_SOCKET_SENDMMSG_X:
+		g_stats.m_n_sendmmsg += 1;
+		parse_sendmmsg_exit(pgevent);
 		break;
 
 	case PPME_SYSCALL_PREAD_X:
@@ -849,6 +894,7 @@ void guardig_parser::process_event(guardig *inspector, guardig_evt *pgevent)
 	case PPME_SYSCALL_PREADV_X:
 	case PPME_SOCKET_RECV_X:
 	case PPME_SOCKET_RECVFROM_X:
+	case PPME_SOCKET_RECVMSG_X:
 		g_stats.m_n_recv += 1;
 		parse_recv_exit(pgevent);
 		break;

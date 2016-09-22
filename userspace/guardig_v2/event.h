@@ -50,6 +50,7 @@ public:
 	scap_evt *m_pevt;
 	uint16_t m_cpuid;
 	uint64_t m_evtnum;
+	uint32_t m_nparams;
 	const struct ppm_event_info *m_info;
 	const struct ppm_event_info *m_event_info_table;
 	int32_t m_errorcode;
@@ -66,7 +67,6 @@ public:
 	}
 
 	guardig_evt_param *get_param(uint32_t id);
-	const struct ppm_param_info* get_param_info(uint32_t id);
 
 	inline int64_t get_tid()
 	{
@@ -94,6 +94,7 @@ public:
 		m_info = &(m_event_info_table[m_pevt->type]);
 		m_evtnum = 0;
 		m_errorcode = 0;
+		m_nparams = 0;
 	}
 
 	inline void init(uint8_t* evdata, uint16_t cpuid)
@@ -104,6 +105,7 @@ public:
 		m_cpuid = cpuid;
 		m_evtnum = 0;
 		m_errorcode = 0;
+		m_nparams = 0;
 	}
 
 private:
@@ -111,19 +113,18 @@ private:
 	inline void load_params()
 	{
 		uint32_t j;
-		uint32_t nparams;
 
-		nparams = m_event_info_table[m_pevt->type].nparams;
+		m_nparams = m_event_info_table[m_pevt->type].nparams;
 		uint16_t *lens = (uint16_t *)((char *)m_pevt + sizeof(struct ppm_evt_hdr));
-		char *valptr = (char *)lens + nparams * sizeof(uint16_t);
+		char *valptr = (char *)lens + m_nparams * sizeof(uint16_t);
 
-		if (nparams > PPM_MAX_EVENT_PARAMS)
+		if (m_nparams > PPM_MAX_EVENT_PARAMS)
 		{
 			ASSERT(false);
-			nparams = PPM_MAX_EVENT_PARAMS;
+			m_nparams = PPM_MAX_EVENT_PARAMS;
 		}
 
-		for(j = 0; j < nparams; j++)
+		for(j = 0; j < m_nparams; j++)
 		{
 			m_params[j].init(valptr, lens[j]);
 			valptr += lens[j];
