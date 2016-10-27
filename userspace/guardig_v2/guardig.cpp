@@ -249,6 +249,71 @@ int init_guardig(scap_t *handle)
 }
 
 
+void remove_inactive_processes(guardig *inspector)
+{
+	static time_t last_check = 0;
+	time_t curr_time = time(NULL);
+	uint64_t curr_time_ns = curr_time * 1000000000;
+
+	if (curr_time - last_check > INACTIVE_PROC_CHECK_SECONDS)
+	{
+		last_check = curr_time;
+
+		for ( auto procit = inspector->m_proctable.begin(); procit != inspector->m_proctable.end(); )
+		{
+			process *procinfo = &(procit->second);
+			//
+			// Check if the process still exists in /proc.
+			// If not, remove it from our list.
+			//
+			scap_threadinfo *scap_proc = scap_proc_get_guardig(inspector->m_capture, procinfo->m_pid);
+
+			if(scap_proc)
+			{
+				scap_proc_free(inspector->m_capture, scap_proc);
+				++procit;
+			}
+			else
+			{
+				TRACE_DEBUG("Closing process (missed procexit)");
+				procinfo->close_process(curr_time_ns);
+				procit = inspector->m_proctable.erase(procit);
+			}
+		}
+	}
+}
+
+
+void remove_inactive_connections(guardig *inspector)
+{
+	static time_t last_check = 0;
+	time_t curr_time = time(NULL);
+	uint64_t curr_time_ns = curr_time * 1000000000;
+
+	if (curr_time - last_check > INACTIVE_CONN_CHECK_SECONDS)
+	{
+		last_check = curr_time;
+
+		for ( auto procit = inspector->m_proctable.begin(); procit != inspector->m_proctable.end(); ++procit )
+		{
+			process *procinfo = &(procit->second);
+
+			for ( auto fdit = procinfo->m_fdtable.begin(); fdit != procinfo->m_fdtable.end(); )
+			{
+				bool delete_fd;
+				filedescriptor *fdinfo = &(fdit->second);
+				
+				delete_fd = fdinfo->close_inactive_connections(curr_time_ns);
+				if (delete_fd)
+					fdit = procinfo->m_fdtable.erase(fdit);
+				else
+					++fdit;
+			}
+		}
+	} 
+}
+
+
 void print_drop_statistics(scap_t* capture)
 {
 	static uint64_t nevts = -1;
@@ -340,11 +405,13 @@ int32_t main()
 		if (retval != SCAP_SUCCESS)
 			continue;
 
-		print_drop_statistics(capture);
-
 		gevent.m_pevt = event;
 		gevent.m_cpuid = cpuid;
 		parser.process_event(&inspector, &gevent);
+
+		print_drop_statistics(capture);
+		remove_inactive_processes(&inspector);
+		remove_inactive_connections(&inspector);
 
 		if (g_terminate)
 			break;

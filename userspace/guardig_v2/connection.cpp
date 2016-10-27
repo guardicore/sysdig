@@ -84,18 +84,19 @@ void filedescriptor::delete_connection(ipv4tuple &conntuple)
 }
 
 
-void filedescriptor::close_all_connections(uint64_t timestamp)
+void filedescriptor::close_all_connections(CloseReason reason, uint64_t timestamp)
 {
 	switch(m_proto)
 	{
 	case SOCK_DGRAM:
-		for ( auto it = m_conntable.begin(); it != m_conntable.end(); ++it )
+		for ( auto it = m_conntable.begin(); it != m_conntable.end(); )
 		{
 			connection *conninfo = &(it->second);
 #ifdef PRINT_REPORTS
 			conninfo->print_volume();
-			conninfo->print_close(timestamp);
+			conninfo->print_close(reason, timestamp);
 #endif
+			it = m_conntable.erase(it);
 		}
 		break;
 
@@ -104,10 +105,60 @@ void filedescriptor::close_all_connections(uint64_t timestamp)
 		{
 #ifdef PRINT_REPORTS
 			m_tcp_conn.print_volume();
-			m_tcp_conn.print_close(timestamp);
+			m_tcp_conn.print_close(reason, timestamp);
 #endif
+			m_tcp_conn_valid = false;
 		}
 		break;
+
+	default:
+		TRACE_DEBUG("unknown protocol");
+		break;
+	}
+}
+
+
+/*
+* Removes all inactive connections from fd.
+* @return wether the fd has no connections after removal and can be deleted. 
+*/
+bool filedescriptor::close_inactive_connections(uint64_t timestamp)
+{
+	time_t timestamp_sec = timestamp / 1000000000;
+
+	// FIXME: change the event name to "timeout"
+	switch(m_proto)
+	{
+	case SOCK_DGRAM:
+		for ( auto it = m_conntable.begin(); it != m_conntable.end(); )
+		{
+			connection *conninfo = &(it->second);
+			if (timestamp_sec - conninfo->m_active_time > INACTIVE_CONN_REMOVE_SECONDS)
+			{
+#ifdef PRINT_REPORTS
+				conninfo->print_volume();
+				conninfo->print_close(GD_TIMEOUT, timestamp);
+#endif
+				it = m_conntable.erase(it);
+			}
+			else
+				++it;
+		}
+		return m_conntable.size() == 0;
+
+	case SOCK_STREAM:
+		if (m_tcp_conn_valid)
+		{
+			if (timestamp_sec - m_tcp_conn.m_active_time > INACTIVE_CONN_REMOVE_SECONDS)
+			{
+#ifdef PRINT_REPORTS
+				m_tcp_conn.print_volume();
+				m_tcp_conn.print_close(GD_TIMEOUT, timestamp);
+#endif
+				m_tcp_conn_valid = false;
+			}
+		}
+		return true;
 
 	default:
 		TRACE_DEBUG("unknown protocol");
@@ -130,7 +181,7 @@ void connection::print(bool with_volume)
 		// choose color
 		//
 		if (g_isatty)
-		m_color = color_idx++ % (sizeof(g_colors) / sizeof(g_colors[0]));
+			m_color = color_idx++ % (sizeof(g_colors) / sizeof(g_colors[0]));
 	}
 
 	if (m_fdinfo == NULL || m_fdinfo->m_procinfo == NULL)
@@ -163,7 +214,7 @@ void connection::print(bool with_volume)
 	if (with_volume)
 	{
 		if (g_isatty)
-		printf("%s", g_colors[m_color]);
+			printf("%s", g_colors[m_color]);
 
 		printf("V %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d %lu %lu\n",
 				m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
@@ -174,14 +225,14 @@ void connection::print(bool with_volume)
 
 		if (g_isatty)
 		{
-		printf(RESET_COLOR);
-		fflush(stdout);
-	}
+			printf(RESET_COLOR);
+			fflush(stdout);
+		}
 	}
 	else
 	{
 		if (g_isatty)
-		printf("%s", g_colors[m_color]);
+			printf("%s", g_colors[m_color]);
 
 		printf("C %s %ld %u %u %ld %ld %d %s %s \"%s\" \"%s\" \"unknown\" %ld \"%s\" %s~%d->%s~%d %d\n",
 				m_evt_name.c_str(), m_fdinfo->m_procinfo->m_pid, m_time_s, m_time_ns, m_errorcode,
@@ -191,20 +242,42 @@ void connection::print(bool with_volume)
 
 		if (g_isatty)
 		{
-		printf(RESET_COLOR);
-		fflush(stdout);
+			printf(RESET_COLOR);
+			fflush(stdout);
+		}
 	}
 }
-}
 
 
-void connection::print_close(uint64_t ts)
+void connection::print_close(CloseReason reason, uint64_t ts)
 {
 	if (m_printed_creation)
 	{
 		set_time(ts);
-		m_evt_name = "close";
 		m_errorcode = 0;
+
+#ifdef _DEBUG
+		switch (reason)
+		{
+		case GD_NORMAL:
+			m_evt_name = "close";
+			break;
+		case GD_TIMEOUT:
+			m_evt_name = "timeout";
+			break;
+		case GD_PROC_EXIT:
+			m_evt_name = "procexit";
+			break;
+		case GD_MISSED_CLOSE:
+			m_evt_name = "missed_close";
+			break;
+		default:
+			ASSERT(false);
+			return;
+		}
+#else
+		m_evt_name = "close";
+#endif
 
 		print();
 	}

@@ -69,6 +69,7 @@ public:
 	filedescriptor *add_fd(filedescriptor &fdinfo);
 	filedescriptor *get_fd(int64_t fd);
 	void delete_fd(int64_t fd);
+	void close_process(uint64_t timestamp);
 
 	string m_evt_name;
 	int64_t m_pid;

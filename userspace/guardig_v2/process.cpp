@@ -143,3 +143,21 @@ void process::delete_fd(int64_t fd)
 	m_fdtable.remove(fd);
 }
 
+
+void process::close_process(uint64_t timestamp)
+{
+	for ( auto fdit = m_fdtable.begin(); fdit != m_fdtable.end(); )
+	{
+		filedescriptor *fdinfo = &(fdit->second);
+		fdinfo->close_all_connections(GD_PROC_EXIT, timestamp);
+
+		fdit = m_fdtable.erase(fdit);
+	}
+
+	if (m_had_connection)
+	{
+#ifdef PRINT_REPORTS
+		print_close();
+#endif
+	}
+}

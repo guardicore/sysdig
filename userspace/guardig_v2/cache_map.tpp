@@ -79,9 +79,28 @@ void cache_map<Key,Value,Hash>::remove(Key key)
 
 
 template <class Key, class Value, class Hash>
+typename unordered_map<Key, Value, Hash>::iterator cache_map<Key,Value,Hash>::erase(const typename unordered_map<Key, Value, Hash>::iterator position)
+{
+	if(position->first == m_last_accessed_key)
+	{
+		m_cache_valid = false;
+	}
+
+	return m_map.erase(position);
+}
+
+
+template <class Key, class Value, class Hash>
 void cache_map<Key,Value,Hash>::reset_cache()
 {
 	m_cache_valid = false;
+}
+
+
+template <class Key, class Value, class Hash>
+size_t cache_map<Key,Value,Hash>::size()
+{
+	return m_map.size();
 }
 
 

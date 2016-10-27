@@ -181,7 +181,7 @@ connection *guardig_parser::add_connection_from_event(process *procinfo,
 			// There's an existing FD that wasn't closed (we probably missed the close
 			// event). Print its connections and replace it by the new FD.
 			//
-			fdinfo->close_all_connections(pgevent->m_pevt->ts);
+			fdinfo->close_all_connections(GD_MISSED_CLOSE ,pgevent->m_pevt->ts);
 		}
 
 		fdinfo = procinfo->add_fd(newfd);
@@ -395,6 +395,8 @@ void guardig_parser::parse_rw(bool is_inbound, uint8_t *tuple_data, uint64_t rw_
 	{
 		goto add_connection;
 	}
+
+	conninfo->update_active_time();
 
 #ifdef PRINT_REPORTS
 	//
@@ -731,18 +733,7 @@ void guardig_parser::parse_thread_exit(guardig_evt *pgevent)
 		return;
 	}
 
-	for ( auto fdit = procinfo->m_fdtable.begin(); fdit != procinfo->m_fdtable.end(); ++fdit )
-	{
-		filedescriptor *fdinfo = &(fdit->second);
-		fdinfo->close_all_connections(pgevent->m_pevt->ts);
-	}
-
-	if (procinfo->m_had_connection)
-	{
-#ifdef PRINT_REPORTS
-		procinfo->print_close();
-#endif
-	}
+	procinfo->close_process(pgevent->m_pevt->ts);
 
 	// FIXME: maybe I can improve this line (because I'm querying
 	// 2 times for the same tid.
@@ -790,7 +781,7 @@ void guardig_parser::parse_close_enter(guardig_evt *pgevent)
 	//
 	// Close all connections before deletion.
 	//
-	fdinfo->close_all_connections(pgevent->m_pevt->ts);
+	fdinfo->close_all_connections(GD_NORMAL, pgevent->m_pevt->ts);
 
 	//
 	// Delete fd from the process.

@@ -18,9 +18,11 @@ public:
 	Value *add(Key &key, Value &val);
 	void remove(Key key);
 	void reset_cache();
+	size_t size();
 
 	typename unordered_map<Key, Value, Hash>::iterator begin();
 	typename unordered_map<Key, Value, Hash>::iterator end();
+	typename unordered_map<Key, Value, Hash>::iterator erase(const typename unordered_map<Key, Value, Hash>::iterator position);
 
 	uint32_t m_max_table_size;
 	unordered_map<Key, Value, Hash> m_map;

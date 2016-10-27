@@ -19,6 +19,13 @@ using namespace std;
 class process;
 class filedescriptor;
 
+typedef enum 
+{
+	GD_NORMAL,
+	GD_TIMEOUT,
+	GD_PROC_EXIT,
+	GD_MISSED_CLOSE,
+} CloseReason;
 
 class connection
 {
@@ -37,7 +44,7 @@ public:
 	void init()
 	{
 		m_evt_name = "unknown";
-		m_time = 0;
+		m_active_time = time(NULL);
 		m_time_s = 0;
 		m_time_ns = 0;
 		m_errorcode = -1;
@@ -50,24 +57,26 @@ public:
 		m_fdinfo = NULL;
 		m_printed_creation = false;
 
-#ifdef PRINT_COLORS
 		m_color = 0;
-#endif
 	}
 
 	void print(bool with_volume=false);
-	void print_close(uint64_t time);
+	void print_close(CloseReason reason, uint64_t time);
 	void print_volume();
 
 	void set_time(uint64_t ts)
 	{
-		m_time = ts;
 		m_time_s = ts / 1000000000;
 		m_time_ns = ts % 1000000000;
 	}
 
+	void update_active_time()
+	{
+		m_active_time = time(NULL);
+	}
+
 	string m_evt_name;
-	uint64_t m_time;
+	time_t m_active_time;
 	uint32_t m_time_s;
 	uint32_t m_time_ns;
 	int64_t m_errorcode;
@@ -78,10 +87,8 @@ public:
 
 	filedescriptor *m_fdinfo;
 
-#ifdef PRINT_COLORS
 	static uint32_t color_idx;
 	uint32_t m_color;
-#endif
 };
 
 
@@ -100,7 +107,8 @@ public:
 	connection *add_connection(connection &conninfo);
 	connection *get_connection(ipv4tuple &conntuple);
 	void delete_connection(ipv4tuple &conntuple);
-	void close_all_connections(uint64_t timestamp);
+	void close_all_connections(CloseReason reason, uint64_t timestamp);
+	bool close_inactive_connections(uint64_t timestamp);
 
 	int64_t m_fd;
 	scap_fd_type m_type;
