@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <signal.h>
+#include <unistd.h>
 #include "scap.h"
 #include "guardig.h"
 #include "event.h"
@@ -11,6 +12,7 @@ struct guardig_evttables g_infotables;
 struct stats g_stats = {0};
 bool g_terminate = false;
 
+extern bool g_isatty;
 
 uint32_t interesting_events[] =
 {
@@ -184,7 +186,7 @@ void init_info_tables()
 }
 
 
-void init_event_mask(scap_t *handle)
+int init_event_mask(scap_t *handle)
 {
 	uint32_t i;
 	scap_clear_eventmask(handle);
@@ -194,8 +196,11 @@ void init_event_mask(scap_t *handle)
 		if (scap_set_eventmask(handle, interesting_events[i]) != SCAP_SUCCESS)
 		{
 			fprintf(stderr, "ERROR setting event mask\n");
+			return 1;
 		}
 	}
+
+	return 0;
 }
 
 
@@ -218,6 +223,27 @@ int init_signals()
 		fprintf(stderr, "An error occurred while setting SIGTERM signal handler.\n");
 		return 1;
 	}
+
+	return 0;
+}
+
+
+int init_guardig(scap_t *handle)
+{
+	int res;
+
+	if (isatty(fileno(stdout)))
+		g_isatty = true;
+
+	res = init_signals();
+	if (res != 0)
+		return 1;
+
+	res = init_event_mask(handle);
+	if (res != 0)
+		return 1;
+		
+	init_info_tables();
 
 	return 0;
 }
@@ -275,8 +301,6 @@ int32_t main()
 	guardig_evt gevent;
 	guardig_parser parser;
 
-	init_signals();
-
 	// FIXME: do I need to define this callback?
 	/*
 	if(!m_filter_proc_table_when_saving)
@@ -301,8 +325,9 @@ int32_t main()
 	if(scap_set_snaplen(capture, 1) != SCAP_SUCCESS)
 		ASSERT(false);
 
-	init_event_mask(capture);
-	init_info_tables();
+	if (init_guardig(capture) != 0)
+		goto cleanup;
+
 	inspector.m_network_interfaces.import_interfaces(scap_get_ifaddr_list(capture));
 
 	// FIXME: this is hacky, fix it.
@@ -325,8 +350,6 @@ int32_t main()
 			break;
 	}
 
-	scap_close(capture);
-
 	fprintf(stderr, "Summary:\n"
 					"--------\n"
 					"connect:\t%lu\n" "accept:\t\t%lu\n" "clone:\t\t%lu\n"
@@ -337,5 +360,8 @@ int32_t main()
 					g_stats.m_n_close_x, g_stats.m_n_send, g_stats.m_n_sendmmsg, g_stats.m_n_recv);
 
 cleanup:
+	if (capture != NULL)
+		scap_close(capture);
+		
 	return 0;
 }
