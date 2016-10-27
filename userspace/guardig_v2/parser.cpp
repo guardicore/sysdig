@@ -374,8 +374,18 @@ void guardig_parser::parse_rw(bool is_inbound, uint8_t *tuple_data, uint64_t rw_
 		// The read / write systemcall will succeed, but the call to sock->ops->getname in
 		// the kernel will fail becasue the socket is no longer connected hence leaving the tuple empty.
 		//
-		TRACE_DEBUG("conntuple is not valid. sip: %08x, dip: %08x, sport: %hd, dport: %hd",
-					conntuple.m_sip, conntuple.m_dip, conntuple.m_sport, conntuple.m_dport);
+
+		//
+		// This scenario can happen for example if the nbns server is sending a broadcast packet
+		// on port 138 and also listens on that port, so it gets the packet it just sent.
+		// We're are intentionally ignoring cases like this.
+		//
+		if (conntuple.m_sport == conntuple.m_dport)
+			return;
+
+		TRACE_DEBUG("conntuple is not valid. type: %d, sip: %08x, dip: %08x, sport: %hd, dport: %hd",
+					pgevent->m_pevt->type, conntuple.m_sip, conntuple.m_dip, conntuple.m_sport, conntuple.m_dport);
+
 		return;
 	}
 

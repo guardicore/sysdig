@@ -94,7 +94,8 @@ uint32_t sinsp_network_interfaces::infer_ipv4_address(uint32_t destination_addre
 
 void sinsp_network_interfaces::update_tuple(ipv4tuple *pipv4info)
 {
-	if(0 != pipv4info->m_sip && 0 != pipv4info->m_dip)
+	if((0 != pipv4info->m_sip && 0 != pipv4info->m_dip) ||
+	   (0 == pipv4info->m_sip && 0 == pipv4info->m_dip))
 	{
 		return;
 	}
